@@ -51,7 +51,7 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
             }
             setTaskCounts(counts)
         }
-    }, [params])
+    }, [project, email])
 
 
     const filteredTasks = project?.tasks?.filter(task => {

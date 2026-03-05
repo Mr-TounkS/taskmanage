@@ -27,11 +27,11 @@ const TaskComponent: FC<TaskProps> = ({task, index, email, onDelete}) => {
         <td className="flex flex-col ">
             <div className={`badge text-xs mb-2 font-semibold 
             ${task.status == "To Do" ? "bg-red-200 font-semibold" : ""}
-            ${task.status == "In Progresse" ? "bg-yellow-200 font-semibold" : ""}
+            ${task.status == "In Progress" ? "bg-yellow-200 font-semibold" : ""}
             ${task.status == "Done" ? "bg-green-200 font-semibold" : ""}
             `}>
             {task.status == "To Do" && "A faire"}
-            {task.status == "In Progresse" && "En cours"}
+            {task.status == "In Progress" && "En cours"}
             {task.status == "Done" && "Terminé"}
             </div>
             <span className="text-sm font-bold">
