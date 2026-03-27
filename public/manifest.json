@@ -1,0 +1,26 @@
+{
+  "name": "Task Manage",
+  "short_name": "Task Manage",
+  "description": "PWA de gestion de projet Agile avec détection proactive des risques (SGR)",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "lang": "fr",
+  "dir": "ltr",
+  "theme_color": "#8936FF",
+  "background_color": "#2EC6FE",
+  "icons": [
+    {
+      "src": "icon512_maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icon512_rounded.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

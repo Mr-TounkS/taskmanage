@@ -1,18 +1,18 @@
-import { User } from "@prisma/client";
+import { UserEntity } from "@/domain/entities/User";
 import React, { FC, useState } from "react";
 import UserInfo from "./UserInfo";
 
 interface AssignTaskProps {
-    users: User[];
+    users: UserEntity[];
     projectId: string;
-    onAssignTask : (user : User) => void
+    onAssignTask : (user : UserEntity) => void
 }
 
 const AssignTask: FC<AssignTaskProps> = ({ users, projectId, onAssignTask }) => {
 
-    const [selectedUser, setselectedUser] = useState<User | null>(null)
-    
-    const handleAssign = (user : User) => {
+    const [selectedUser, setselectedUser] = useState<UserEntity | null>(null)
+
+    const handleAssign = (user : UserEntity) => {
         setselectedUser(user)
         onAssignTask(user)
         const modal = document.getElementById('my_modal_3') as HTMLDialogElement

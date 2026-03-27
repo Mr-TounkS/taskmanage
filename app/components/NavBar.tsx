@@ -24,7 +24,12 @@ const NavBar = () => {
 
     useEffect(() => {
         if (user?.primaryEmailAddress?.emailAddress && user?.fullName) {
-            checkAndAddUser(user?.primaryEmailAddress?.emailAddress, user?.fullName)
+            // Transmet la photo de profil Clerk (Google, GitHub, upload manuel)
+            checkAndAddUser(
+                user.primaryEmailAddress.emailAddress,
+                user.fullName,
+                user.imageUrl ?? undefined
+            )
         }
     }, [user])
 

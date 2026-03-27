@@ -1,4 +1,4 @@
-import { Project as PrismaProject, Task  as  PrismaTask, User } from '@prisma/client';
+import { Project as PrismaProject, Task as PrismaTask, User } from '@/prisma/generated/prisma/client';
 
 // Fusion du type PrismaProject avec vos propriétés supplémentaires
 export type Project = PrismaProject & {
@@ -15,11 +15,14 @@ export type Project = PrismaProject & {
     toDoPercentage: number;
   };
   tasks?: Task[]; // Assurez-vous que la relation tasks est incluse
-  users?: User[]; 
-  createdBy?: User, 
+  users?: User[];
+  createdBy?: User,
 };
 
 export type Task = PrismaTask & {
-  user?: User | null; 
-  createdBy?: User | null ;
+  user?: User | null;
+  createdBy?: User | null;
+  // Champs ajoutés — migration 20260322
+  priority?: 'LOW' | 'MEDIUM' | 'HIGH';
+  startDate?: Date | null;
 }

@@ -1,0 +1,203 @@
+
+"use client"
+
+/**
+ * SGRWidget — Composant d'affichage du Score Global de Risque
+ *
+ * Affiche le score SGR, le niveau de risque, le détail des 5 indicateurs
+ * et les alertes actives pour un projet donné.
+ *
+ * Section mémoire : 3.4 — Module actif de gestion des risques
+ */
+
+import { useEffect, useState } from "react";
+import { AlertTriangle, TrendingDown, Clock, Activity, Code2, RefreshCw } from "lucide-react";
+import { getProjectSGR, getSGRHistory } from "@/app/actions";
+import { SGRResult } from "@/lib/risk-algorithm/types";
+import SGRHistoryChart from "./SGRHistoryChart";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+interface SGRWidgetProps {
+  projectId: string;
+  /** Incrémenter cette valeur depuis le parent pour forcer un recalcul */
+  refreshKey?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers d'affichage
+// ---------------------------------------------------------------------------
+
+/** Couleur DaisyUI selon le niveau de risque */
+function couleurNiveau(niveau: SGRResult["niveau"]): string {
+  switch (niveau) {
+    case "faible": return "badge-success";
+    case "modéré": return "badge-warning";
+    case "élevé": return "badge-error";
+    case "critique": return "badge-error";
+    default: return "badge-neutral";
+  }
+}
+
+/** Couleur de la barre de progression selon le score */
+function couleurBarre(score: number): string {
+  if (score <= 30) return "progress-success";
+  if (score <= 60) return "progress-warning";
+  return "progress-error";
+}
+
+/** Libellé lisible pour chaque indicateur */
+const LABELS_INDICATEURS: Record<string, { label: string; icon: React.ReactNode }> = {
+  wip: { label: "Limite WIP", icon: <AlertTriangle className="w-3 h-3" /> },
+  cycleTime: { label: "Cycle Time", icon: <Clock className="w-3 h-3" /> },
+  age: { label: "Age des tâches", icon: <Activity className="w-3 h-3" /> },
+  throughput: { label: "Débit", icon: <TrendingDown className="w-3 h-3" /> },
+  tech: { label: "Dette tech", icon: <Code2 className="w-3 h-3" /> },
+};
+
+// ---------------------------------------------------------------------------
+// Composant
+// ---------------------------------------------------------------------------
+
+// Type d'un point d'historique retourné par getSGRHistory
+type PointHistorique = Awaited<ReturnType<typeof getSGRHistory>>[number];
+
+export default function SGRWidget({ projectId, refreshKey }: SGRWidgetProps) {
+  const [result, setResult] = useState<SGRResult | null>(null);
+  const [historique, setHistorique] = useState<PointHistorique[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  const chargerSGR = async () => {
+    setLoading(true);
+    setErreur(null);
+    try {
+      // Calcul du SGR courant + récupération de l'historique en parallèle
+      const [data, hist] = await Promise.all([
+        getProjectSGR(projectId),
+        getSGRHistory(projectId),
+      ]);
+      setResult(data);
+      setHistorique(hist);
+    } catch (error) {
+      setErreur(error instanceof Error ? error.message : "Impossible de calculer le SGR.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (projectId) chargerSGR();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, refreshKey]);
+
+  // --- État de chargement ---
+  if (loading) {
+    return (
+      <div className="p-5 border border-base-300 rounded-xl mb-6 flex items-center gap-2 text-sm text-base-content/60">
+        <span className="loading loading-spinner loading-xs"></span>
+        Calcul du SGR…
+      </div>
+    );
+  }
+
+  // --- État d'erreur ---
+  if (erreur || !result) {
+    return (
+      <div className="p-5 border border-base-300 rounded-xl mb-6 text-sm text-error">
+        {erreur ?? "Données SGR indisponibles."}
+      </div>
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Rendu principal
+  // ---------------------------------------------------------------------------
+  return (
+    <div className="p-5 border border-base-300 rounded-xl mb-6">
+      {/* En-tête */}
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-semibold text-sm">Score Global de Risque</h3>
+        <button
+          onClick={chargerSGR}
+          className="btn btn-ghost btn-xs"
+          title="Recalculer le SGR"
+        >
+          <RefreshCw className="w-3 h-3" />
+        </button>
+      </div>
+
+      {/* Score principal */}
+      <div className="flex items-center gap-3 mb-4">
+        <div className="text-4xl font-bold tabular-nums">
+          {result.sgr}
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-xs text-base-content/50">/ 100</span>
+          <span className={`badge badge-sm ${couleurNiveau(result.niveau)}`}>
+            {result.niveau.toUpperCase()}
+          </span>
+        </div>
+      </div>
+
+      {/* Barre de progression globale */}
+      <progress
+        className={`progress w-full mb-4 ${couleurBarre(result.sgr)}`}
+        value={result.sgr}
+        max={100}
+      />
+
+      {/* Indicateurs détaillés */}
+      <div className="space-y-2 mb-4">
+        {(Object.entries(result.indicateurs) as [string, SGRResult["indicateurs"]["wip"]][]).map(
+          ([cle, indicateur]) => {
+            const meta = LABELS_INDICATEURS[cle];
+            return (
+              <div key={cle} className="flex items-center gap-2">
+                <span className="text-base-content/60">{meta?.icon}</span>
+                <span className="text-xs text-base-content/70 w-24 shrink-0">
+                  {meta?.label}
+                </span>
+                <progress
+                  className={`progress flex-1 h-1.5 ${couleurBarre(indicateur.score)}`}
+                  value={indicateur.score}
+                  max={100}
+                />
+                <span className="text-xs tabular-nums w-8 text-right">
+                  {Math.round(indicateur.score)}
+                </span>
+              </div>
+            );
+          }
+        )}
+      </div>
+
+      {/* Alertes actives */}
+      {result.alertes.length > 0 && (
+        <div className="space-y-1">
+          {result.alertes.map((alerte, i) => (
+            <div
+              key={i}
+              className="flex items-start gap-1.5 text-xs text-warning"
+            >
+              <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
+              <span>{alerte}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Aucune alerte */}
+      {result.alertes.length === 0 && (
+        <p className="text-xs text-success">Aucune alerte active.</p>
+      )}
+
+      {/* Graphique d'évolution temporelle du SGR */}
+      <div className="border-t border-base-300 mt-4 pt-2">
+        <SGRHistoryChart historique={historique} />
+      </div>
+    </div>
+  );
+}
