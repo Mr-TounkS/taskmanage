@@ -13,7 +13,7 @@ import { toast } from "react-toastify";
 import dynamic from 'next/dynamic';
 
 // On importe ReactQuill dynamiquement et on désactive le SSR
-const ReactQuill = dynamic(() => import('react-quill-new'), { 
+const ReactQuill = dynamic(() => import('react-quill-new'), {
     ssr: false,
     loading: () => <div className="h-40 w-full bg-base-200 animate-pulse rounded-xl">Chargement de l'éditeur...</div>
 });
@@ -83,7 +83,7 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
             await updateTaskStatus(taskId, newStatus)
             fetchInfos(taskId)
         } catch (error) {
-            toast.error('Erreur lors du changement de status')
+            toast.error(error instanceof Error ? error.message : 'Erreur lors du changement de status')
         }
     }
 
@@ -102,29 +102,29 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
     }
 
     const closeTask = async (newStatus: string) => {
-    const modal = document.getElementById('my_modal_3') as HTMLDialogElement;
-    
-    // Cette regex supprime toutes les balises HTML et les espaces vides
-    const strippedSolution = solution.replace(/<[^>]*>/g, '').trim();
+        const modal = document.getElementById('my_modal_3') as HTMLDialogElement;
 
-    try {
-        // On vérifie si le contenu "nettoyé" est vide
-        if (strippedSolution !== "") { 
-            await updateTaskStatus(taskId, newStatus, solution);
-            fetchInfos(taskId);
-            if (modal) {
-                modal.close();
+        // Cette regex supprime toutes les balises HTML et les espaces vides
+        const strippedSolution = solution.replace(/<[^>]*>/g, '').trim();
+
+        try {
+            // On vérifie si le contenu "nettoyé" est vide
+            if (strippedSolution !== "") {
+                await updateTaskStatus(taskId, newStatus, solution);
+                fetchInfos(taskId);
+                if (modal) {
+                    modal.close();
+                }
+                toast.success('Tache cloturée');
+                setSolution(""); // Optionnel : vider l'éditeur après succès
+            } else {
+                // Maintenant, cela s'affichera si l'utilisateur n'a rien tapé d'utile
+                toast.error('Il manque une solution');
             }
-            toast.success('Tache cloturée');
-            setSolution(""); // Optionnel : vider l'éditeur après succès
-        } else {
-            // Maintenant, cela s'affichera si l'utilisateur n'a rien tapé d'utile
-            toast.error('Il manque une solution');
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Erreur lors du changement de status");
         }
-    } catch (error) {
-        toast.error("Erreur lors du changement de status");
     }
-}
 
     useEffect(() => {
         const modal = document.getElementById('my_modal_3') as HTMLDialogElement
@@ -162,6 +162,7 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                                     role="Assigné a"
                                     email={task.user?.email || null}
                                     name={task.user?.name || null}
+                                    imageUrl={task.user?.imageUrl || null}
                                 />
                             </div>
                         </div>
@@ -194,12 +195,13 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                                         role="Créer par"
                                         email={task.createdBy?.email || null}
                                         name={task.createdBy?.name || null}
+                                        imageUrl={task.createdBy?.imageUrl || null}
                                     />
                                 </div>
-                                 <div className="badge badge-primary my-4 md:mt-0">
-                                        {task.dueDate && `
+                                <div className="badge badge-primary my-4 md:mt-0">
+                                    {task.dueDate && `
                                         ${Math.max(0, Math.ceil((new Date(task.dueDate).getTime() - new Date().getTime()) /
-                                            (1000 * 60 * 60 * 24)))} jours restants
+                                        (1000 * 60 * 60 * 24)))} jours restants
                                       `}
                                 </div>
                             </div>
@@ -242,10 +244,10 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                                     modules={modules}
                                     onChange={setSolution}
                                 />
-                                <button 
-                                onClick={() => closeTask(status)} 
-                                className="btn mt-4" 
-                                disabled={solution.replace(/<[^>]*>/g, '').trim() === ""}>Terminé(e)</button>
+                                <button
+                                    onClick={() => closeTask(status)}
+                                    className="btn mt-4"
+                                    disabled={solution.replace(/<[^>]*>/g, '').trim() === ""}>Terminé(e)</button>
                             </div>
                         </dialog>
                     </div>

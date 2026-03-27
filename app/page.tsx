@@ -17,14 +17,16 @@ export default function Home() {
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [projects, setProjects] = useState<Project[]>([])
+  const [loading, setLoading] = useState(true)
 
   const fetchProjects = async (email: string) => {
     try {
       const myproject = await getProjectsCreatedByUser(email)
       setProjects(myproject)
-      console.log(myproject)
     } catch (error) {
       console.error('Erreur lors du chargement du projets:', error);
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -97,7 +99,11 @@ export default function Home() {
           </div>
         </dialog>
         <div className="w-full">
-           {projects.length > 0 ? (
+          {loading ? (
+            <div className="flex justify-center items-center py-20">
+              <span className="loading loading-spinner loading-md"></span>
+            </div>
+          ) : projects.length > 0 ? (
             <ul className="w-full grid md:grid-cols-3 gap-6">
               {projects.map((project) => (
                 <li key={project.id}>
@@ -105,7 +111,7 @@ export default function Home() {
                 </li>
               ))}
             </ul>
-           ) : (
+          ) : (
             <div>
               <EmptyState
               imageSrc="/empty-project.png"
@@ -113,7 +119,7 @@ export default function Home() {
               message="Aucun projet cree"
               />
             </div>
-           )}
+          )}
         </div>
       </div>
     </Wrapper>

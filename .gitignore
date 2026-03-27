@@ -46,3 +46,8 @@ next-env.d.ts
 /prisma/generated
 node_modules
 .env
+
+# PWA files
+/public/sw.js
+/public/swe-worker-5c72df51bb1f6ee0.js
+/public/workbox-f1770938.js

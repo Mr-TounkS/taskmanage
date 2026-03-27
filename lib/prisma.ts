@@ -1,5 +1,5 @@
 // lib/prisma.ts
-import { PrismaClient } from '@prisma/client'          // ou le chemin de ton output si custom
+import { PrismaClient } from '../prisma/generated/prisma/client'          // ou le chemin de ton output si custom
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3'
 
 const prismaClientSingleton = () => {

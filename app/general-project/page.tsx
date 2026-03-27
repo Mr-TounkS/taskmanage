@@ -15,7 +15,7 @@ const page = () => {
     const email = user?.primaryEmailAddress?.emailAddress as string
     const [inviteCode, setInviteCode] = useState('')
     const [associatedProjects, setAssociatedProjects] = useState<Project[]>([])
-
+    const [loading, setLoading] = useState(true)
 
     const fetchProjects = async (email: string) => {
         try {
@@ -23,6 +23,8 @@ const page = () => {
             setAssociatedProjects(associated)
         } catch (error) {
             toast.error("Erreur lors du chargement des projets:")
+        } finally {
+            setLoading(false)
         }
     }
     useEffect(() => {
@@ -65,23 +67,27 @@ const page = () => {
                 </button>
             </div>
             <div>
-                 {associatedProjects.length > 0 ? (
-            <ul className="w-full grid md:grid-cols-3 gap-6">
-              {associatedProjects.map((project) => (
-                <li key={project.id}>
-                  <ProjectComponent project={project} admin={0} style={true} ></ProjectComponent>
-                </li>
-              ))}
-            </ul>
-           ) : (
-            <div>
-              <EmptyState
-              imageSrc="/empty-project.png"
-              imageAlt="Picture of an empty project"
-              message="Aucun projet associe"
-              />
-            </div>
-           )}
+              {loading ? (
+                <div className="flex justify-center items-center py-20">
+                  <span className="loading loading-spinner loading-md"></span>
+                </div>
+              ) : associatedProjects.length > 0 ? (
+                <ul className="w-full grid md:grid-cols-3 gap-6">
+                  {associatedProjects.map((project) => (
+                    <li key={project.id}>
+                      <ProjectComponent project={project} admin={0} style={true} ></ProjectComponent>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div>
+                  <EmptyState
+                  imageSrc="/empty-project.png"
+                  imageAlt="Picture of an empty project"
+                  message="Aucun projet associe"
+                  />
+                </div>
+              )}
             </div>
         </Wrapper>
     )

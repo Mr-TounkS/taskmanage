@@ -1,6 +1,12 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
 
-const isPublicRoute = createRouteMatcher(['/sign-in(.*)', '/sign-up(.*)'])
+// Routes accessibles sans authentification
+const isPublicRoute = createRouteMatcher([
+  '/sign-in(.*)',   // Page de connexion Clerk
+  '/sign-up(.*)',   // Page d'inscription Clerk
+  '/offline',       // Fallback PWA — doit fonctionner sans connexion internet
+  '/manifest.json', // Manifest PWA — requis pour l'installation sur mobile
+])
 
 export default clerkMiddleware(async (auth, request) => {
   if (!isPublicRoute(request)) {

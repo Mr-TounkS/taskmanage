@@ -1,29 +1,44 @@
 import React, { FC } from "react";
 import Image from "next/image";
+
 interface UserInfoProps {
     role: string,
     email: string | null,
-    name: string | null
+    name: string | null,
+    imageUrl?: string | null,
 }
 
-const UserInfo: FC<UserInfoProps> = ({role, email, name}) => {
+const UserInfo: FC<UserInfoProps> = ({ role, email, name, imageUrl }) => {
+    // Initiales de secours si pas de photo
+    const initiales = name
+        ? name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase()
+        : "?";
+
     return (
         <div className="flex items-center">
-          <div className="avatar">
-            <div className="ring-primary ring-offset-base-100 w-9 rounded-full ring ring-offset-2">
-             <Image 
-             src={'/'}
-             alt="profile image"
-             height={500}
-             width={500}
-             />
+            <div className="avatar">
+                <div className="w-9 rounded-full ring ring-primary ring-offset-base-100 ring-offset-2">
+                    {imageUrl ? (
+                        <Image
+                            src={imageUrl}
+                            alt={name || "avatar"}
+                            width={36}
+                            height={36}
+                            className="rounded-full object-cover"
+                            referrerPolicy="no-referrer"
+                        />
+                    ) : (
+                        <div className="bg-primary text-primary-content w-9 h-9 rounded-full flex items-center justify-center">
+                            <span className="text-xs font-bold">{initiales}</span>
+                        </div>
+                    )}
+                </div>
             </div>
-          </div>
-          <div className="flex flex-col ml-4">
-            <span className="text-xs text-gray-400">{role}</span>
-            <span className="text-sm">{email || ""}</span>
-            <span className="text-sm italic font-bold">{name || ""}</span>
-          </div>
+            <div className="flex flex-col ml-4">
+                <span className="text-xs text-gray-400">{role}</span>
+                <span className="text-sm">{email || ""}</span>
+                <span className="text-sm italic font-bold">{name || ""}</span>
+            </div>
         </div>
     )
 }
