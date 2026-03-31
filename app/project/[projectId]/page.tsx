@@ -1,5 +1,6 @@
 "use client"
 import { deleteTaskById, getProjectInfo } from "@/app/actions";
+import { saveToCache, readFromCache, cacheKeyProject } from "@/lib/local-data-cache";
 import EmptyState from "@/app/components/EmptyState";
 import ProjectComponent from "@/app/components/ProjectComponent";
 import TaskComponent from "@/app/components/TaskComponent";
@@ -29,13 +30,25 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
     const [vue, setVue] = useState<"liste" | "kanban">("liste")
 
     const fetchInfos = async (projectId: string) => {
+        // Mode hors ligne → lecture depuis le cache localStorage
+        if (!navigator.onLine) {
+            const cached = readFromCache<Project>(cacheKeyProject(projectId))
+            if (cached) setProject(cached)
+            return
+        }
+
         try {
             const project = await getProjectInfo(projectId, true)
             setProject(project)
+            // Sauvegarde en cache pour les sessions offline
+            saveToCache(cacheKeyProject(projectId), project)
             // Déclenche le recalcul du SGR à chaque rechargement du projet
             setSgrRefreshKey(k => k + 1)
         } catch (error) {
             console.error("Erreur lors du chargement du projet:", error);
+            // Fallback cache si la requête échoue
+            const cached = readFromCache<Project>(cacheKeyProject(projectId))
+            if (cached) setProject(cached)
         }
     }
 

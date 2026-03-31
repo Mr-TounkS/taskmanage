@@ -6,7 +6,7 @@ generator client {
 
 // 2. La Source de données (Unique et sans URL car gérée par prisma.config.ts)
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 // 3. Tes Modèles

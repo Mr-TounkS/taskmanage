@@ -1,12 +1,13 @@
 // lib/prisma.ts
-import { PrismaClient } from '../prisma/generated/prisma/client'          // ou le chemin de ton output si custom
-import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3'
+// Migration SQLite → PostgreSQL (Neon) via l'adaptateur @prisma/adapter-neon.
+// Prisma 7 avec engine "client" nécessite un adapter explicite.
+import { PrismaClient } from '../prisma/generated/prisma/client'
+import { PrismaNeon } from '@prisma/adapter-neon'
 
 const prismaClientSingleton = () => {
-  const adapter = new PrismaBetterSqlite3({
-    url: process.env.DATABASE_URL || 'file:./prisma/dev.db',
+  const adapter = new PrismaNeon({
+    connectionString: process.env.DATABASE_URL!,
   })
-
   return new PrismaClient({ adapter })
 }
 

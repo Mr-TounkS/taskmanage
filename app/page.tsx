@@ -9,32 +9,57 @@ import { toast } from "react-toastify";
 import { Project } from "./type";
 import ProjectComponent from "./components/ProjectComponent";
 import EmptyState from "./components/EmptyState";
+import { saveToCache, readFromCache, cacheKeyProjects } from "@/lib/local-data-cache";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 
 export default function Home() {
 
   const { user } = useUser()
   const email = user?.primaryEmailAddress?.emailAddress as string
+  const isOnline = useOnlineStatus()
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
+  const [fromCache, setFromCache] = useState(false)
 
   const fetchProjects = async (email: string) => {
+    // Mode hors ligne → lecture immédiate depuis le cache localStorage
+    if (!navigator.onLine) {
+      const cached = readFromCache<Project[]>(cacheKeyProjects(email))
+      if (cached) {
+        setProjects(cached)
+        setFromCache(true)
+      }
+      setLoading(false)
+      return
+    }
+
     try {
       const myproject = await getProjectsCreatedByUser(email)
       setProjects(myproject)
+      setFromCache(false)
+      // Sauvegarde en cache pour les prochaines sessions offline
+      saveToCache(cacheKeyProjects(email), myproject)
     } catch (error) {
-      console.error('Erreur lors du chargement du projets:', error);
+      console.error('Erreur lors du chargement des projets:', error);
+      // Fallback cache si la requête échoue malgré une connexion apparente
+      const cached = readFromCache<Project[]>(cacheKeyProjects(email))
+      if (cached) {
+        setProjects(cached)
+        setFromCache(true)
+      }
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    if (email) {
+    // Ne pas re-fetcher si on passe offline et que des projets sont déjà chargés
+    if (email && (projects.length === 0 || isOnline)) {
       fetchProjects(email)
     }
-  }, [email])
+  }, [email, isOnline])
 
   const deleteProject = async (projectId: string) => {
     try {
@@ -98,6 +123,14 @@ export default function Home() {
             </div>
           </div>
         </dialog>
+        {/* Indicateur de données en cache (mode offline) */}
+        {fromCache && !isOnline && (
+          <div className="flex items-center gap-2 text-xs text-base-content/50 mb-4 bg-base-200 rounded-lg px-3 py-2">
+            <span>📦</span>
+            <span>Données hors ligne — dernière synchronisation depuis votre session précédente</span>
+          </div>
+        )}
+
         <div className="w-full">
           {loading ? (
             <div className="flex justify-center items-center py-20">
@@ -116,7 +149,7 @@ export default function Home() {
               <EmptyState
               imageSrc="/empty-project.png"
               imageAlt="Picture of an empty project"
-              message="Aucun projet cree"
+              message={isOnline ? "Aucun projet créé" : "Aucune donnée en cache — visitez vos projets en ligne d'abord"}
               />
             </div>
           )}

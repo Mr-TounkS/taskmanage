@@ -8,30 +8,54 @@ import { useUser } from "@clerk/nextjs";
 import { Project } from "../type";
 import ProjectComponent from "../components/ProjectComponent";
 import EmptyState from "../components/EmptyState";
+import { saveToCache, readFromCache, cacheKeyAssociated } from "@/lib/local-data-cache";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 
 const page = () => {
 
     const { user } = useUser()
     const email = user?.primaryEmailAddress?.emailAddress as string
+    const isOnline = useOnlineStatus()
     const [inviteCode, setInviteCode] = useState('')
     const [associatedProjects, setAssociatedProjects] = useState<Project[]>([])
     const [loading, setLoading] = useState(true)
+    const [fromCache, setFromCache] = useState(false)
 
     const fetchProjects = async (email: string) => {
+        // Mode hors ligne → lecture depuis le cache localStorage
+        if (!navigator.onLine) {
+            const cached = readFromCache<Project[]>(cacheKeyAssociated(email))
+            if (cached) {
+                setAssociatedProjects(cached)
+                setFromCache(true)
+            }
+            setLoading(false)
+            return
+        }
+
         try {
             const associated = await getProjectsAssociatedWithUser(email)
             setAssociatedProjects(associated)
+            setFromCache(false)
+            saveToCache(cacheKeyAssociated(email), associated)
         } catch (error) {
             toast.error("Erreur lors du chargement des projets:")
+            // Fallback cache si la requête échoue
+            const cached = readFromCache<Project[]>(cacheKeyAssociated(email))
+            if (cached) {
+                setAssociatedProjects(cached)
+                setFromCache(true)
+            }
         } finally {
             setLoading(false)
         }
     }
+
     useEffect(() => {
-        if (email) {
+        if (email && (associatedProjects.length === 0 || isOnline)) {
             fetchProjects(email)
         }
-    }, [email])
+    }, [email, isOnline])
 
     const handleSubmit = async () => {
         try {
@@ -52,6 +76,12 @@ const page = () => {
 
     return (
         <Wrapper>
+            {fromCache && !isOnline && (
+                <div className="flex items-center gap-2 text-xs text-base-content/50 mb-4 bg-base-200 rounded-lg px-3 py-2">
+                    <span>📦</span>
+                    <span>Données hors ligne — dernière synchronisation depuis votre session précédente</span>
+                </div>
+            )}
             <div className="flex">
                 <div className="mb-4">
                     <input
@@ -84,7 +114,7 @@ const page = () => {
                   <EmptyState
                   imageSrc="/empty-project.png"
                   imageAlt="Picture of an empty project"
-                  message="Aucun projet associe"
+                  message={isOnline ? "Aucun projet associé" : "Aucune donnée en cache — visitez vos projets en ligne d'abord"}
                   />
                 </div>
               )}
