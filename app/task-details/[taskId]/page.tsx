@@ -187,8 +187,8 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                             </div>
                         </div>
 
-                        <div>
-                            <div className="flex md:justify-between  md:items-center flex-col md:flex-row">
+                        <div className="mb-6">
+                            <div className="flex md:justify-between md:items-center flex-col md:flex-row">
 
                                 <div className="p-5 border border-base-300 rounded-xl w-full md:w-fit">
                                     <UserInfo

@@ -16,7 +16,7 @@
  * Section mémoire : 3.2 — Kanban + fonctionnalités PWA
  */
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { DragDropContext, Droppable, DropResult } from "@hello-pangea/dnd"
 import dynamic from "next/dynamic"
 import "react-quill-new/dist/quill.snow.css"
@@ -24,7 +24,9 @@ import { Task } from "@/app/type"
 import KanbanCard from "./KanbanCard"
 import { updateTaskStatus } from "@/app/actions"
 import { toast } from "react-toastify"
-import { ListTodo, Loader, CircleCheckBig } from "lucide-react"
+import { ListTodo, Loader, CircleCheckBig, WifiOff } from "lucide-react"
+import { useOnlineStatus } from "@/hooks/useOnlineStatus"
+import { useOfflineQueue } from "@/hooks/useOfflineQueue"
 
 // Éditeur riche — chargé côté client uniquement (pas de SSR)
 const ReactQuill = dynamic(() => import("react-quill-new"), {
@@ -92,11 +94,33 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
     const [enCours, setEnCours] = useState(false)
     const modalRef = useRef<HTMLDialogElement>(null)
 
+    // Détection de la connexion et file d'attente offline
+    const isOnline = useOnlineStatus()
+    const { execute: executeOffline } = useOfflineQueue()
+
+    // Copie locale des tâches pour les mises à jour optimistes (offline-first)
+    const [localTasks, setLocalTasks] = useState<Task[]>(tasks)
+
+    // Synchronise la copie locale quand les props changent (retour online)
+    useEffect(() => {
+        setLocalTasks(tasks)
+    }, [tasks])
+
+    /**
+     * Applique une mise à jour optimiste sur la copie locale des tâches.
+     * L'UI reflète le changement immédiatement, même sans confirmation serveur.
+     */
+    const applyOptimisticMove = (taskId: string, newStatus: string) => {
+        setLocalTasks((prev) =>
+            prev.map((t) => t.id === taskId ? { ...t, status: newStatus } : t)
+        )
+    }
+
     /**
      * Gestionnaire de fin de drag-and-drop.
      * Règle d'autorisation : seul l'assigné de la tâche peut la déplacer.
      * Si la destination est "Done" → ouvre la modal de solution.
-     * Sinon → applique le changement directement.
+     * Sinon → applique le changement directement (online ou offline).
      */
     const handleDragEnd = async (result: DropResult) => {
         const { destination, source, draggableId } = result
@@ -106,7 +130,7 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
         if (destination.droppableId === source.droppableId) return
 
         // Vérification d'autorisation : seul l'assigné peut déplacer sa tâche
-        const tache = tasks.find((t) => t.id === draggableId)
+        const tache = localTasks.find((t) => t.id === draggableId)
         if (tache?.user?.email !== email) {
             toast.error("Vous ne pouvez déplacer que les tâches qui vous sont assignées")
             return
@@ -122,21 +146,40 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
             return
         }
 
-        // Changement direct sans solution requise
+        // Mise à jour optimiste immédiate (UI réactive même hors ligne)
+        applyOptimisticMove(draggableId, nouveauStatut)
+
+        const labelColonne = COLONNES.find((c) => c.id === nouveauStatut)?.label
+
+        if (!isOnline) {
+            // Hors ligne → mise en file d'attente IndexedDB + Background Sync
+            const result = await executeOffline({
+                type: "UPDATE_TASK_STATUS",
+                url: `/api/tasks/${draggableId}/status`,
+                method: "PATCH",
+                payload: { status: nouveauStatut },
+            })
+            if (result.queued) {
+                toast.info(`Déplacé vers "${labelColonne}" — synchronisation à la reconnexion`)
+            }
+            return
+        }
+
+        // En ligne → Server Action directe
         try {
             await updateTaskStatus(draggableId, nouveauStatut)
             onTaskMoved()
-            toast.success(
-                `Tâche déplacée vers "${COLONNES.find((c) => c.id === nouveauStatut)?.label}"`
-            )
+            toast.success(`Tâche déplacée vers "${labelColonne}"`)
         } catch {
+            // Rollback de la mise à jour optimiste en cas d'erreur
+            applyOptimisticMove(draggableId, source.droppableId)
             toast.error("Impossible de déplacer la tâche")
         }
     }
 
     /**
      * Valide la clôture de la tâche avec la solution saisie.
-     * Reproduit la logique de closeTask() dans task-details/page.tsx.
+     * En mode offline : mise en queue et mise à jour optimiste.
      */
     const confirmerCloture = async () => {
         if (!pendingTaskId) return
@@ -148,6 +191,24 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
         }
 
         setEnCours(true)
+
+        if (!isOnline) {
+            // Mise à jour optimiste + queue offline
+            applyOptimisticMove(pendingTaskId, "Done")
+            await executeOffline({
+                type: "UPDATE_TASK_STATUS",
+                url: `/api/tasks/${pendingTaskId}/status`,
+                method: "PATCH",
+                payload: { status: "Done", solution },
+            })
+            modalRef.current?.close()
+            setPendingTaskId(null)
+            setSolution("")
+            setEnCours(false)
+            toast.info("Tâche marquée terminée — synchronisation à la reconnexion")
+            return
+        }
+
         try {
             await updateTaskStatus(pendingTaskId, "Done", solution)
             modalRef.current?.close()
@@ -169,14 +230,25 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
         setSolution("")
     }
 
-    // Filtre les tâches par colonne
-    const tachesPar = (statut: string) => tasks.filter((t) => t.status === statut)
+    // Filtre les tâches par colonne (sur la copie locale pour les updates optimistes)
+    const tachesPar = (statut: string) => localTasks.filter((t) => t.status === statut)
 
     return (
         <>
+            {/* Indicateur offline local au Kanban */}
+            {!isOnline && (
+                <div className="flex items-center gap-2 text-xs text-warning bg-warning/10 border border-warning/30 rounded-lg px-3 py-2 mb-3">
+                    <WifiOff size={14} />
+                    <span>
+                        Vous êtes hors ligne. Les déplacements de tâches seront synchronisés
+                        automatiquement dès la reprise de connexion.
+                    </span>
+                </div>
+            )}
+
             <DragDropContext onDragEnd={handleDragEnd}>
                 {/* Scroll horizontal sur mobile, grille 3 colonnes sur desktop */}
-                <div className="flex gap-4 overflow-x-auto pb-3 md:grid md:grid-cols-3 md:overflow-x-visible">
+                <div className="flex gap-3 overflow-x-auto pb-3 snap-x snap-mandatory lg:grid lg:grid-cols-3 lg:overflow-x-visible lg:snap-none">
                     {COLONNES.map((colonne) => {
                         const taches = tachesPar(colonne.id)
                         const Icone = colonne.icon
@@ -184,7 +256,7 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
                         return (
                             <div
                                 key={colonne.id}
-                                className="flex flex-col rounded-xl border border-base-300 overflow-hidden min-w-[280px] w-[85vw] sm:w-[70vw] md:min-w-0 md:w-auto shrink-0 md:shrink"
+                                className="flex flex-col rounded-xl border border-base-300 overflow-hidden min-w-[260px] w-[78vw] sm:w-[55vw] md:w-[45vw] lg:min-w-0 lg:w-auto shrink-0 lg:shrink snap-center"
                             >
                                 {/* En-tête de colonne */}
                                 <div
