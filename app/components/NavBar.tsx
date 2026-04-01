@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { checkAndAddUser } from "../actions";
+import PushNotificationToggle from "./PushNotificationToggle";
 
 
 const NavBar = () => {
@@ -62,6 +63,11 @@ const NavBar = () => {
 
                 <div className="hidden sm:flex space-x-4 items-center">
                     {renderLinks("btn")}
+                    {user?.primaryEmailAddress?.emailAddress && (
+                        <PushNotificationToggle
+                            userEmail={user.primaryEmailAddress.emailAddress}
+                        />
+                    )}
                     <UserButton />
                 </div>
             </div>

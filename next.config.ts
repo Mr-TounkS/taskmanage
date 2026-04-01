@@ -18,6 +18,8 @@ const withPWA = withPWAInit({
 
 const nextConfig: NextConfig = {
   turbopack: {},
+  // web-push est un module Node.js pur — ne pas bundler via webpack
+  serverExternalPackages: ["web-push"],
   images: {
     // Allowed domains for Clerk profile pictures
     remotePatterns: [

@@ -28,6 +28,9 @@ import { UpsertWIPConfigUseCase } from "@/application/use-cases/wip/UpsertWIPCon
 import { CalculateSGRUseCase } from "@/application/use-cases/sgr/CalculateSGRUseCase";
 import { SGRTechDebt } from "@/lib/risk-algorithm/types";
 
+// Push notifications
+import { sendPushToSubscriptions } from "@/lib/push-notifications";
+
 // Use Cases - Task
 import { CreateTaskUseCase } from "@/application/use-cases/task/CreateTaskUseCase";
 import { DeleteTaskUseCase } from "@/application/use-cases/task/DeleteTaskUseCase";
@@ -170,13 +173,66 @@ export async function getProjectSGR(
 ) {
     const { taskRepo, columnWIPConfigRepo, sgrHistoryRepo } = makeRepos();
     try {
-        return await new CalculateSGRUseCase(taskRepo, columnWIPConfigRepo, sgrHistoryRepo).execute({
+        const result = await new CalculateSGRUseCase(taskRepo, columnWIPConfigRepo, sgrHistoryRepo).execute({
             projectId,
             techDebt,
         });
+
+        // Déclenche une notification push si le SGR dépasse le seuil d'alerte
+        if (result.sgr >= 60) {
+            await notifyProjectMembersPush(projectId, result.sgr, result.niveau);
+        }
+
+        return result;
     } catch (error) {
         console.error('[SGR Error]', error);
         throw new Error(`Erreur lors du calcul du SGR: ${error instanceof Error ? error.message : String(error)}`);
+    }
+}
+
+/**
+ * Envoie une notification push à tous les membres abonnés d'un projet.
+ * Supprime automatiquement les abonnements expirés (code 410).
+ */
+async function notifyProjectMembersPush(
+    projectId: string,
+    sgr: number,
+    niveau: string
+): Promise<void> {
+    try {
+        // Récupère tous les abonnements push des membres du projet
+        const subscriptions = await prisma.pushSubscription.findMany({
+            where: {
+                user: {
+                    OR: [
+                        { userProjects: { some: { projectId } } },
+                        { projects: { some: { id: projectId } } },
+                    ],
+                },
+            },
+        });
+
+        if (subscriptions.length === 0) return;
+
+        const isCritical = sgr >= 80;
+        const payload = {
+            title: isCritical ? "Risque critique détecté" : "Risque modéré détecté",
+            body: `SGR : ${Math.round(sgr)}/100 — Niveau ${niveau}. Vérifiez votre tableau Kanban.`,
+            url: `/project/${projectId}`,
+            icon: "/android-192x192.png",
+        };
+
+        const expiredEndpoints = await sendPushToSubscriptions(subscriptions, payload);
+
+        // Nettoie les abonnements expirés
+        if (expiredEndpoints.length > 0) {
+            await prisma.pushSubscription.deleteMany({
+                where: { endpoint: { in: expiredEndpoints } },
+            });
+        }
+    } catch (error) {
+        // Ne bloque jamais le calcul SGR si le push échoue
+        console.error("[Push SGR] Erreur notification :", error);
     }
 }
 
