@@ -20,6 +20,10 @@ const nextConfig: NextConfig = {
   turbopack: {},
   // web-push est un module Node.js pur — ne pas bundler via webpack
   serverExternalPackages: ["web-push"],
+  experimental: {
+    // Réduit le bundle en important uniquement les composants utilisés
+    optimizePackageImports: ["lucide-react", "recharts"],
+  },
   images: {
     // Allowed domains for Clerk profile pictures
     remotePatterns: [
