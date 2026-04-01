@@ -11,14 +11,26 @@ datasource db {
 
 // 3. Tes Modèles
 model User {
-  id           String        @id @default(uuid())
-  name         String
-  email        String        @unique
-  imageUrl     String?       // Photo de profil Clerk (Google, GitHub, etc.)
-  tasks        Task[]
-  createdTasks Task[]        @relation("CreatedTasks")
-  projects     Project[]     @relation("UserProjects")
-  userProjects ProjectUser[]
+  id                String             @id @default(uuid())
+  name              String
+  email             String             @unique
+  imageUrl          String?            // Photo de profil Clerk (Google, GitHub, etc.)
+  tasks             Task[]
+  createdTasks      Task[]             @relation("CreatedTasks")
+  projects          Project[]          @relation("UserProjects")
+  userProjects      ProjectUser[]
+  pushSubscriptions PushSubscription[]
+}
+
+// Abonnements aux notifications push Web — stockés par utilisateur
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Project {
