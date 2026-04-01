@@ -147,6 +147,81 @@ self.addEventListener("message", (event: MessageEvent) => {
   }
 });
 
+// ─── Gestion des notifications push ─────────────────────────────────────────
+
+interface PushPayload {
+  title: string;
+  body: string;
+  url?: string;
+  icon?: string;
+}
+
+// Cast du scope SW pour accéder à registration et clients
+type SW = {
+  registration: { showNotification: (title: string, options: NotificationOptions) => Promise<void> };
+  clients: {
+    matchAll: (opts: { type: string; includeUncontrolled: boolean }) => Promise<SWClient[]>;
+    openWindow: (url: string) => Promise<unknown>;
+  };
+};
+
+interface SWClient {
+  url: string;
+  focus?: () => Promise<SWClient>;
+}
+
+interface SWPushEvent extends Event {
+  data: { json: () => unknown } | null;
+  waitUntil: (p: Promise<unknown>) => void;
+}
+
+interface SWNotificationEvent extends Event {
+  notification: { close: () => void; data: unknown };
+  waitUntil: (p: Promise<unknown>) => void;
+}
+
+// Reçoit les données envoyées par le serveur via web-push et affiche la notification
+self.addEventListener("push", (event: Event) => {
+  const pushEvent = event as SWPushEvent;
+  const data = pushEvent.data?.json() as PushPayload | undefined;
+
+  if (!data) return;
+
+  const notificationOptions: NotificationOptions = {
+    body: data.body,
+    icon: data.icon ?? "/android-192x192.png",
+    badge: "/android-96x96.png",
+    data: { url: data.url ?? "/" },
+  };
+
+  pushEvent.waitUntil(
+    (self as unknown as SW).registration.showNotification(data.title, notificationOptions)
+  );
+});
+
+// Ouvre l'URL associée à la notification quand l'utilisateur clique dessus
+self.addEventListener("notificationclick", (event: Event) => {
+  const notifEvent = event as SWNotificationEvent;
+  notifEvent.notification.close();
+
+  const url = (notifEvent.notification.data as { url?: string })?.url ?? "/";
+  const sw = self as unknown as SW;
+
+  notifEvent.waitUntil(
+    sw.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((clientList) => {
+        // Réutilise un onglet existant si possible
+        for (const client of clientList) {
+          if (client.url === url && client.focus) {
+            return client.focus();
+          }
+        }
+        return sw.clients.openWindow(url);
+      })
+  );
+});
+
 // ─── Déclarations des types non standard (Background Sync API) ───────────────
 // SyncEvent et SyncManager ne sont pas encore dans les types TS officiels (dom lib)
 declare interface SyncEvent extends Event {
