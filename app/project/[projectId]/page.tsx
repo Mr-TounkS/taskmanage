@@ -4,10 +4,22 @@ import { saveToCache, readFromCache, cacheKeyProject } from "@/lib/local-data-ca
 import EmptyState from "@/app/components/EmptyState";
 import ProjectComponent from "@/app/components/ProjectComponent";
 import TaskComponent from "@/app/components/TaskComponent";
-import KanbanBoard from "@/app/components/KanbanBoard";
 import UserInfo from "@/app/components/UserInfo";
-import SGRWidget from "@/app/components/SGRWidget";
-import WIPConfigWidget from "@/app/components/WIPConfigWidget";
+import dynamic from "next/dynamic";
+
+// Chargement différé des composants lourds pour réduire le TBT (Total Blocking Time)
+const KanbanBoard = dynamic(() => import("@/app/components/KanbanBoard"), {
+    loading: () => <div className="flex justify-center py-10"><span className="loading loading-spinner loading-lg text-primary" /></div>,
+    ssr: false,
+});
+const SGRWidget = dynamic(() => import("@/app/components/SGRWidget"), {
+    loading: () => <div className="skeleton h-48 w-full rounded-xl" />,
+    ssr: false,
+});
+const WIPConfigWidget = dynamic(() => import("@/app/components/WIPConfigWidget"), {
+    loading: () => <div className="skeleton h-24 w-full rounded-xl" />,
+    ssr: false,
+});
 import Wrapper from "@/app/components/Wrapper";
 import { Project } from "@/app/type";
 import { useUser } from "@clerk/nextjs";
