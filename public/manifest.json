@@ -71,6 +71,22 @@
       "purpose": "maskable"
     }
   ],
+  "shortcuts": [
+    {
+      "name": "Mes Projets",
+      "short_name": "Projets",
+      "description": "Accéder à mes projets",
+      "url": "/",
+      "icons": [{ "src": "/android-96x96.png", "sizes": "96x96", "type": "image/png" }]
+    },
+    {
+      "name": "Collaboration",
+      "short_name": "Collab",
+      "description": "Voir les projets partagés",
+      "url": "/general-project",
+      "icons": [{ "src": "/android-96x96.png", "sizes": "96x96", "type": "image/png" }]
+    }
+  ],
   "screenshots": [
     {
       "src": "/Screenshot-mobile.png",
