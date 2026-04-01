@@ -12,9 +12,9 @@
 import { useEffect, useRef, useState } from "react";
 
 export function useOnlineStatus(): boolean {
-  const [isOnline, setIsOnline] = useState<boolean>(
-    typeof navigator !== "undefined" ? navigator.onLine : true
-  );
+  // Démarre toujours à true : le bandeau ne s'affiche que si un événement
+  // "offline" réel se produit, pas au chargement initial de la page.
+  const [isOnline, setIsOnline] = useState<boolean>(true);
   const offlineTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
