@@ -87,10 +87,10 @@ export function usePushNotifications(): UsePushNotificationsReturn {
       }
 
       // Souscrit auprès du navigateur avec la clé VAPID publique
-      const applicationServerKey = urlBase64ToUint8Array(vapidKey);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const subscription = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: applicationServerKey.buffer as ArrayBuffer,
+        applicationServerKey: urlBase64ToUint8Array(vapidKey) as unknown as ArrayBuffer,
       });
 
       const keys = subscription.toJSON().keys as { p256dh: string; auth: string };
