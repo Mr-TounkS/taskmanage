@@ -81,16 +81,23 @@ export function usePushNotifications(): UsePushNotificationsReturn {
       const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
 
       if (!vapidKey) {
-        console.error("[Push] NEXT_PUBLIC_VAPID_PUBLIC_KEY manquant");
+        console.error("[Push] NEXT_PUBLIC_VAPID_PUBLIC_KEY manquant dans les variables d'environnement");
+        setIsLoading(false);
+        return;
+      }
+
+      // Vérifie que la clé VAPID fait bien 65 bytes (point P-256 non compressé)
+      const keyArray = urlBase64ToUint8Array(vapidKey);
+      if (keyArray.length !== 65) {
+        console.error(`[Push] Clé VAPID invalide : ${keyArray.length} bytes (attendu 65). Vérifiez NEXT_PUBLIC_VAPID_PUBLIC_KEY.`);
         setIsLoading(false);
         return;
       }
 
       // Souscrit auprès du navigateur avec la clé VAPID publique
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const subscription = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(vapidKey) as unknown as ArrayBuffer,
+        applicationServerKey: keyArray as unknown as ArrayBuffer,
       });
 
       const keys = subscription.toJSON().keys as { p256dh: string; auth: string };
