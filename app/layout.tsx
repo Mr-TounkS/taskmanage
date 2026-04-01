@@ -32,10 +32,6 @@ export default function RootLayout({
       <html lang="fr" data-theme="light">
         <head>
           <link rel="apple-touch-icon" href="/icon512_rounded.png" />
-          {/* Préconnexion aux domaines critiques pour réduire la latence réseau */}
-          <link rel="preconnect" href="https://clerk.accounts.dev" />
-          <link rel="preconnect" href="https://img.clerk.com" />
-          <link rel="dns-prefetch" href="https://clerk.accounts.dev" />
         </head>
         <body>
           {/* Bandeau offline — affiché automatiquement dès perte de connexion */}
