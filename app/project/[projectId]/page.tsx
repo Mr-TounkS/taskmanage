@@ -245,7 +245,7 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                                                     <th>Titre</th>
                                                     <th>Assigné à</th>
                                                     <th className="hidden md:table-cell">Date de début</th>
-                                                    <th className="hidden md:flex">A livré le</th>
+                                                    <th className="hidden md:table-cell">A livré le</th>
                                                     <th>Actions</th>
                                                 </tr>
                                             </thead>

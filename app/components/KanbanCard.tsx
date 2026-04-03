@@ -114,36 +114,37 @@ export default function KanbanCard({ task, index, email, onDelete }: KanbanCardP
                         </div>
                     </div>
 
-                    {/* Dates — compact sur mobile, complet sur desktop */}
-                    <div className="flex flex-col gap-0.5 mb-1.5 tabular-nums">
+                    {/* Dates — desktop uniquement (mobile : dans la zone Actions) */}
+                    <div className="hidden lg:flex flex-col gap-0.5 mb-1.5 tabular-nums">
                         {task.startDate && (
                             <p className="text-[10px] text-base-content/50">
-                                <span className="hidden lg:inline">Début : </span>
-                                <span className="lg:hidden">
-                                    {new Date(task.startDate).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })}
-                                </span>
-                                <span className="hidden lg:inline">
-                                    {new Date(task.startDate).toLocaleDateString("fr-FR")}
-                                </span>
+                                Début : {new Date(task.startDate).toLocaleDateString("fr-FR")}
                             </p>
                         )}
                         {task.dueDate && (
                             <p className={`text-[10px] ${estEnRetard ? "text-error font-medium" : "text-base-content/50"}`}>
-                                <span className="hidden lg:inline">Livraison : </span>
-                                <span className="lg:hidden">
-                                    {new Date(task.dueDate).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })}
-                                </span>
-                                <span className="hidden lg:inline">
-                                    {new Date(task.dueDate).toLocaleDateString("fr-FR")}
-                                </span>
+                                Livraison : {new Date(task.dueDate).toLocaleDateString("fr-FR")}
                             </p>
                         )}
                     </div>
 
                     </div>{/* Fin de la zone de drag */}
 
-                    {/* Actions — boutons compacts (hors zone de drag pour le clic mobile) */}
+                    {/* Actions — boutons + dates en mobile */}
                     <div className="flex items-center gap-1.5">
+                        {/* Dates compactes — mobile uniquement */}
+                        <div className="flex flex-col gap-0.5 tabular-nums lg:hidden mr-auto">
+                            {task.startDate && (
+                                <span className="text-[10px] text-base-content/50">
+                                    {new Date(task.startDate).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })}
+                                </span>
+                            )}
+                            {task.dueDate && (
+                                <span className={`text-[10px] ${estEnRetard ? "text-error font-medium" : "text-base-content/50"}`}>
+                                    {new Date(task.dueDate).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })}
+                                </span>
+                            )}
+                        </div>
                         <Link
                             href={`/task-details/${task.id}`}
                             className="btn btn-primary btn-xs flex-1 text-[11px] sm:text-xs h-7 min-h-0"
