@@ -57,6 +57,19 @@ const TaskComponent: FC<TaskProps> = ({task, index, email, onDelete}) => {
                     </span>
                 )}
             </div>
+            {/* Dates visibles uniquement en mobile */}
+            <div className="flex flex-col gap-0.5 md:hidden mt-1">
+                {task.startDate && (
+                    <span className="text-xs text-gray-400">
+                        Début : {new Date(task.startDate).toLocaleDateString()}
+                    </span>
+                )}
+                {task.dueDate && (
+                    <span className="text-xs text-gray-400">
+                        Livraison : {new Date(task.dueDate).toLocaleDateString()}
+                    </span>
+                )}
+            </div>
         </td>
 
         <td>
