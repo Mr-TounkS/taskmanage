@@ -68,32 +68,19 @@ const TaskComponent: FC<TaskProps> = ({task, index, email, onDelete}) => {
         </td>
 
         <td>
-            <div className="text-xs text-gray-500 hidden md:flex">
+            <div className="text-xs text-gray-500 tabular-nums">
                 {task.dueDate && new Date(task.dueDate).toLocaleDateString()}
             </div>
         </td>
 
         <td>
-            <div className="text-xs text-gray-500 hidden md:flex">
+            <div className="text-xs text-gray-500 tabular-nums">
                 {task.startDate && new Date(task.startDate).toLocaleDateString()}
             </div>
         </td>
 
         <td>
-           <div className="flex items-center gap-1.5">
-                {/* Dates compactes — mobile uniquement */}
-                <div className="flex flex-col gap-0.5 md:hidden mr-auto tabular-nums">
-                    {task.startDate && (
-                        <span className="text-[10px] text-gray-400">
-                            {new Date(task.startDate).toLocaleDateString()}
-                        </span>
-                    )}
-                    {task.dueDate && (
-                        <span className="text-[10px] text-gray-400">
-                            {new Date(task.dueDate).toLocaleDateString()}
-                        </span>
-                    )}
-                </div>
+           <div className="flex h-fit">
                 <Link
                 className="btn btn-primary"
                 href={`/task-details/${task.id}`}>
@@ -101,7 +88,7 @@ const TaskComponent: FC<TaskProps> = ({task, index, email, onDelete}) => {
                     <ArrowRight className="w-4"/>
                 </Link>
                 {canDelete && (
-                    <button onClick={handleDeleteClick} className="btn btn-sm">
+                    <button onClick={handleDeleteClick} className="btn btn-sm ml-2">
                         <Trash className="w-4"/>
                     </button>
                 )}

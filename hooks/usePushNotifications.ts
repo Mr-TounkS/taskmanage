@@ -94,6 +94,12 @@ export function usePushNotifications(): UsePushNotificationsReturn {
         return;
       }
 
+      // Supprime l'ancien abonnement s'il existe (évite le conflit de clé VAPID)
+      const existingSub = await reg.pushManager.getSubscription();
+      if (existingSub) {
+        await existingSub.unsubscribe();
+      }
+
       // Souscrit auprès du navigateur avec la clé VAPID publique
       const subscription = await reg.pushManager.subscribe({
         userVisibleOnly: true,
