@@ -57,19 +57,6 @@ const TaskComponent: FC<TaskProps> = ({task, index, email, onDelete}) => {
                     </span>
                 )}
             </div>
-            {/* Dates visibles uniquement en mobile */}
-            <div className="flex flex-col gap-0.5 md:hidden mt-1">
-                {task.startDate && (
-                    <span className="text-xs text-gray-400">
-                        Début : {new Date(task.startDate).toLocaleDateString()}
-                    </span>
-                )}
-                {task.dueDate && (
-                    <span className="text-xs text-gray-400">
-                        Livraison : {new Date(task.dueDate).toLocaleDateString()}
-                    </span>
-                )}
-            </div>
         </td>
 
         <td>
@@ -93,20 +80,31 @@ const TaskComponent: FC<TaskProps> = ({task, index, email, onDelete}) => {
         </td>
 
         <td>
-           <div className="flex h-fit">
-            <Link
-            className="btn btn-primary"
-            href={`/task-details/${task.id}`}>
-                Plus
-                <ArrowRight className="w-4"/>
-            </Link>
-            {
-                canDelete && (
-                    <button onClick={handleDeleteClick} className="btn btn-sm ml-2">
+           <div className="flex items-center gap-1.5">
+                {/* Dates compactes — mobile uniquement */}
+                <div className="flex flex-col gap-0.5 md:hidden mr-auto tabular-nums">
+                    {task.startDate && (
+                        <span className="text-[10px] text-gray-400">
+                            {new Date(task.startDate).toLocaleDateString()}
+                        </span>
+                    )}
+                    {task.dueDate && (
+                        <span className="text-[10px] text-gray-400">
+                            {new Date(task.dueDate).toLocaleDateString()}
+                        </span>
+                    )}
+                </div>
+                <Link
+                className="btn btn-primary"
+                href={`/task-details/${task.id}`}>
+                    Plus
+                    <ArrowRight className="w-4"/>
+                </Link>
+                {canDelete && (
+                    <button onClick={handleDeleteClick} className="btn btn-sm">
                         <Trash className="w-4"/>
                     </button>
-                )
-            }
+                )}
            </div>
         </td>
         </>
