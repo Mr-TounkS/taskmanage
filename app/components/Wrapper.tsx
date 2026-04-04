@@ -10,8 +10,10 @@ const Wrapper = ({ children }: WrapperPops) => {
     return (
         <div>
             <NavBar/>
-            <div className="px-5 md:px-[10%] mt-8 mb-10">
-                 <ToastContainer 
+            {/* <main> sémantique requis pour l'accessibilité (landmark ARIA) */}
+            {/* Corrige : "Document does not have a main landmark" — Lighthouse Accessibility */}
+            <main className="px-5 md:px-[10%] mt-8 mb-10">
+                 <ToastContainer
                  position='top-right'
                  autoClose={5000}
                  hideProgressBar={false}
@@ -21,7 +23,7 @@ const Wrapper = ({ children }: WrapperPops) => {
                  draggable
                  />
                 {children}
-            </div>
+            </main>
 
         </div>
     )

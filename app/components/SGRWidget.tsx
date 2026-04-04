@@ -11,10 +11,19 @@
  */
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { AlertTriangle, TrendingDown, Clock, Activity, Code2, RefreshCw } from "lucide-react";
 import { getProjectSGR, getSGRHistory } from "@/app/actions";
 import { SGRResult } from "@/lib/risk-algorithm/types";
-import SGRHistoryChart from "./SGRHistoryChart";
+
+// Recharts (~300 Ko) chargé en différé — réduit le TBT sur le chargement initial
+// Corrige : "Reduce JavaScript execution time" — Lighthouse Performance
+const SGRHistoryChart = dynamic(() => import("./SGRHistoryChart"), {
+  ssr: false,
+  loading: () => (
+    <div className="h-24 w-full bg-base-200 animate-pulse rounded-lg mt-4" />
+  ),
+});
 
 // ---------------------------------------------------------------------------
 // Types

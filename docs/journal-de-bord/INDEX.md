@@ -9,7 +9,10 @@
 | # | Date | Type | Titre | Section mémoire | SGR |
 |---|------|------|-------|-----------------|-----|
 | 1 | 2026-03-28 | FEATURE + INCIDENT | [Background Sync + IndexedDB + fix ReloadButton](./2026-03-28-feature-background-sync-indexeddb.md) | 3.2.2 | 42→35 |
+| 2 | 2026-03-31 | FEATURE + INCIDENT | [Migration SQLite → PostgreSQL Neon + Déploiement Vercel](./2026-03-31-migration-neon-deploiement-vercel.md) | 3.2, 4.2 | Risque éliminé |
+| 3 | 2026-03-31 | FIX + UI | [KanbanCard responsive + fix drag-drop mobile](./2026-03-31-kanban-responsive-dragdrop-mobile.md) | 3.2.1, 3.2.3 | R_Tech ↓ |
+| 4 | 2026-03-31 | DEPLOY | [Déploiement Vercel réussi + Dog-fooding](./2026-03-31-deploiement-vercel-reussi.md) | 3.2, 4.1, 4.3 | Risque déploiement éliminé |
 
 ---
 
-*Mis à jour automatiquement — dernière entrée : 2026-03-28*
+*Mis à jour automatiquement — dernière entrée : 2026-03-31*
