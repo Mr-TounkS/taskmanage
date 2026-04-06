@@ -59,16 +59,16 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      // Scripts : self + Clerk + inline scripts Next.js (nécessaires pour hydratation)
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://clerk.com https://*.clerk.accounts.dev https://challenges.cloudflare.com",
+      // Scripts : self + Clerk + Firebase SW compat scripts + inline Next.js
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://clerk.com https://*.clerk.accounts.dev https://challenges.cloudflare.com https://www.gstatic.com",
       // Styles : self + inline (DaisyUI/Tailwind génère des styles inline)
       "style-src 'self' 'unsafe-inline'",
       // Images : self + data URIs + Clerk avatars
       "img-src 'self' data: blob: https://img.clerk.com https://images.clerk.dev",
       // Polices de caractères
       "font-src 'self' data:",
-      // Connexions réseau : self + Clerk API + Neon DB (via Server Actions)
-      "connect-src 'self' https://*.clerk.com https://*.clerk.accounts.dev https://*.neon.tech wss://*.neon.tech",
+      // Connexions réseau : self + Clerk API + Neon DB + Firebase FCM
+      "connect-src 'self' https://*.clerk.com https://*.clerk.accounts.dev https://*.neon.tech wss://*.neon.tech https://*.googleapis.com https://*.firebase.com https://*.firebaseio.com https://fcm.googleapis.com",
       // Frames : Clerk utilise des iframes pour l'authentification
       "frame-src 'self' https://clerk.com https://*.clerk.accounts.dev https://challenges.cloudflare.com",
       // Workers : Service Worker PWA
@@ -81,8 +81,8 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   turbopack: {},
-  // web-push est un module Node.js pur — ne pas bundler via webpack
-  serverExternalPackages: ["web-push"],
+  // Modules Node.js natifs — ne pas bundler via webpack
+  serverExternalPackages: ["firebase-admin"],
   experimental: {
     // Réduit le bundle en important uniquement les composants utilisés
     optimizePackageImports: ["lucide-react", "recharts"],

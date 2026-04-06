@@ -2,17 +2,26 @@
 
 /**
  * usePushNotifications.ts
- * Hook React pour gérer l'abonnement aux notifications push Web.
+ * Hook React pour gérer l'abonnement aux notifications push via Firebase FCM.
+ *
+ * Migration Web Push VAPID → Firebase FCM :
+ *   - Ancienne méthode : pushManager.subscribe() → échouait avec "push service error"
+ *   - Nouvelle méthode : getToken() Firebase → chemin d'enregistrement différent,
+ *     contourne les restrictions réseau liées au FCM direct du navigateur
  *
  * Fonctionnement :
- *   1. Vérifie le support (Notification API + ServiceWorker + PushManager)
- *   2. Demande la permission à l'utilisateur
- *   3. Souscrit via pushManager.subscribe() avec la clé VAPID publique
- *   4. Sauve l'abonnement en base via /api/push/subscribe
- *   5. Permet le désabonnement via /api/push/unsubscribe
+ *   1. Enregistre le Service Worker Firebase (firebase-messaging-sw.js)
+ *   2. Demande la permission Notification à l'utilisateur
+ *   3. Récupère le token FCM via getToken()
+ *   4. Sauvegarde le token en base via /api/push/subscribe
+ *   5. Gère les notifications en premier plan via onMessage()
+ *
+ * Section mémoire : 3.4 — Module actif de gestion des risques
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { getToken, onMessage } from "firebase/messaging";
+import { getFirebaseMessaging } from "@/lib/firebase-client";
 
 type PermissionState = "default" | "granted" | "denied";
 
@@ -25,50 +34,49 @@ interface UsePushNotificationsReturn {
   unsubscribe: () => Promise<void>;
 }
 
-/** Convertit une clé VAPID base64url en Uint8Array pour pushManager.subscribe() */
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const rawData = window.atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-  for (let i = 0; i < rawData.length; ++i) {
-    outputArray[i] = rawData.charCodeAt(i);
-  }
-  return outputArray;
-}
-
 export function usePushNotifications(): UsePushNotificationsReturn {
-  const [isSupported, setIsSupported] = useState<boolean>(false);
-  const [permission, setPermission] = useState<PermissionState>("default");
+  const [isSupported, setIsSupported]   = useState<boolean>(false);
+  const [permission, setPermission]     = useState<PermissionState>("default");
   const [isSubscribed, setIsSubscribed] = useState<boolean>(false);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLoading, setIsLoading]       = useState<boolean>(false);
+  const [fcmToken, setFcmToken]         = useState<string | null>(null);
 
   // Vérifie le support et l'état initial au montage
   useEffect(() => {
     const supported =
       "serviceWorker" in navigator &&
-      "PushManager" in window &&
-      "Notification" in window;
+      "Notification" in window &&
+      typeof window !== "undefined";
+
     setIsSupported(supported);
 
     if (supported) {
       setPermission(Notification.permission as PermissionState);
-
-      // Vérifie si un abonnement actif existe déjà
-      navigator.serviceWorker.ready.then((reg) => {
-        reg.pushManager.getSubscription().then((sub) => {
-          setIsSubscribed(sub !== null);
-        });
-      });
+      setIsSubscribed(Notification.permission === "granted");
     }
   }, []);
+
+  // Écoute les notifications en premier plan (app ouverte)
+  useEffect(() => {
+    if (!isSupported || permission !== "granted") return;
+
+    const messaging = getFirebaseMessaging();
+    if (!messaging) return;
+
+    const unsubscribeMessage = onMessage(messaging, (payload) => {
+      console.log("[FCM] Notification reçue en premier plan :", payload);
+      // Les alertes en premier plan sont gérées par les toasts SGR automatiques
+    });
+
+    return () => unsubscribeMessage();
+  }, [isSupported, permission]);
 
   const subscribe = useCallback(async (userEmail: string): Promise<void> => {
     if (!isSupported) return;
     setIsLoading(true);
 
     try {
-      // Demande la permission à l'utilisateur
+      // Étape 1 — Demande la permission à l'utilisateur
       const result = await Notification.requestPermission();
       setPermission(result as PermissionState);
 
@@ -77,52 +85,51 @@ export function usePushNotifications(): UsePushNotificationsReturn {
         return;
       }
 
-      const reg = await navigator.serviceWorker.ready;
-      const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      // Étape 2 — Enregistre le Service Worker Firebase (requis par FCM)
+      const swRegistration = await navigator.serviceWorker.register(
+        "/firebase-messaging-sw.js",
+        { scope: "/" }
+      );
 
+      const messaging = getFirebaseMessaging();
+      if (!messaging) {
+        console.error("[FCM] Firebase Messaging non disponible");
+        setIsLoading(false);
+        return;
+      }
+
+      const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY;
       if (!vapidKey) {
-        console.error("[Push] NEXT_PUBLIC_VAPID_PUBLIC_KEY manquant dans les variables d'environnement");
+        console.error("[FCM] NEXT_PUBLIC_FIREBASE_VAPID_KEY manquant");
         setIsLoading(false);
         return;
       }
 
-      // Vérifie que la clé VAPID fait bien 65 bytes (point P-256 non compressé)
-      const keyArray = urlBase64ToUint8Array(vapidKey);
-      if (keyArray.length !== 65) {
-        console.error(`[Push] Clé VAPID invalide : ${keyArray.length} bytes (attendu 65). Vérifiez NEXT_PUBLIC_VAPID_PUBLIC_KEY.`);
-        setIsLoading(false);
-        return;
-      }
-
-      // Supprime l'ancien abonnement s'il existe (évite le conflit de clé VAPID)
-      const existingSub = await reg.pushManager.getSubscription();
-      if (existingSub) {
-        await existingSub.unsubscribe();
-      }
-
-      // Souscrit auprès du navigateur avec la clé VAPID publique
-      const subscription = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: keyArray as unknown as ArrayBuffer,
+      // Étape 3 — Récupère le token FCM (remplace pushManager.subscribe())
+      const token = await getToken(messaging, {
+        vapidKey,
+        serviceWorkerRegistration: swRegistration,
       });
 
-      const keys = subscription.toJSON().keys as { p256dh: string; auth: string };
+      if (!token) {
+        console.error("[FCM] Token vide — vérifiez la configuration Firebase");
+        setIsLoading(false);
+        return;
+      }
 
-      // Sauvegarde l'abonnement en base
+      console.log("[FCM] Token obtenu avec succès");
+      setFcmToken(token);
+
+      // Étape 4 — Sauvegarde le token en base
       await fetch("/api/push/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          endpoint: subscription.endpoint,
-          p256dh: keys.p256dh,
-          auth: keys.auth,
-          userEmail,
-        }),
+        body: JSON.stringify({ token, userEmail }),
       });
 
       setIsSubscribed(true);
     } catch (error) {
-      console.error("[Push] Erreur lors de l'abonnement :", error);
+      console.error("[FCM] Erreur lors de l'abonnement :", error);
     } finally {
       setIsLoading(false);
     }
@@ -131,27 +138,21 @@ export function usePushNotifications(): UsePushNotificationsReturn {
   const unsubscribe = useCallback(async (): Promise<void> => {
     setIsLoading(true);
     try {
-      const reg = await navigator.serviceWorker.ready;
-      const subscription = await reg.pushManager.getSubscription();
-
-      if (subscription) {
-        // Supprime en base
+      if (fcmToken) {
         await fetch("/api/push/unsubscribe", {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ endpoint: subscription.endpoint }),
+          body: JSON.stringify({ token: fcmToken }),
         });
-
-        // Désabonne côté navigateur
-        await subscription.unsubscribe();
-        setIsSubscribed(false);
       }
+      setIsSubscribed(false);
+      setFcmToken(null);
     } catch (error) {
-      console.error("[Push] Erreur lors du désabonnement :", error);
+      console.error("[FCM] Erreur lors du désabonnement :", error);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [fcmToken]);
 
   return { isSupported, permission, isSubscribed, isLoading, subscribe, unsubscribe };
 }

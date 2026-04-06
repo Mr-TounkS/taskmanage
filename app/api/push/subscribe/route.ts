@@ -1,9 +1,12 @@
 /**
  * POST /api/push/subscribe
- * Sauvegarde l'abonnement push d'un utilisateur en base de données.
+ * Sauvegarde le token FCM Firebase d'un utilisateur en base de données.
  *
- * Corps attendu :
- *   { endpoint: string, p256dh: string, auth: string, userEmail: string }
+ * Migration Web Push → Firebase FCM :
+ * Le token FCM est stocké dans le champ `endpoint` (réutilisé).
+ * Les champs `p256dh` et `auth` sont conservés vides pour compatibilité schéma.
+ *
+ * Corps attendu : { token: string, userEmail: string }
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -12,17 +15,15 @@ import prisma from "@/lib/prisma";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json() as {
-      endpoint?: string;
-      p256dh?: string;
-      auth?: string;
+      token?: string;
       userEmail?: string;
     };
 
-    const { endpoint, p256dh, auth, userEmail } = body;
+    const { token, userEmail } = body;
 
-    if (!endpoint || !p256dh || !auth || !userEmail) {
+    if (!token || !userEmail) {
       return NextResponse.json(
-        { error: "Champs manquants : endpoint, p256dh, auth, userEmail requis" },
+        { error: "Champs manquants : token et userEmail requis" },
         { status: 400 }
       );
     }
@@ -33,16 +34,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Utilisateur introuvable" }, { status: 404 });
     }
 
-    // Upsert : évite les doublons si l'utilisateur réabonne le même navigateur
+    // Upsert : le token FCM est stocké dans le champ endpoint
+    // p256dh et auth sont vides — non utilisés par Firebase FCM
     await prisma.pushSubscription.upsert({
-      where: { endpoint },
-      create: { userId: user.id, endpoint, p256dh, auth },
-      update: { p256dh, auth },
+      where:  { endpoint: token },
+      create: { userId: user.id, endpoint: token, p256dh: "", auth: "" },
+      update: { userId: user.id },
     });
 
     return NextResponse.json({ success: true }, { status: 201 });
   } catch (error) {
-    console.error("[Push Subscribe] Erreur :", error);
+    console.error("[FCM Subscribe] Erreur :", error);
     return NextResponse.json({ error: "Erreur interne" }, { status: 500 });
   }
 }

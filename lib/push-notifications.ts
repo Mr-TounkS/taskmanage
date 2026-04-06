@@ -1,25 +1,20 @@
 /**
  * lib/push-notifications.ts
- * Wrapper web-push pour l'envoi de notifications push via le protocole Web Push (VAPID).
+ * Envoi de notifications push via Firebase Cloud Messaging (Admin SDK).
  *
- * Prérequis — variables d'environnement :
- *   NEXT_PUBLIC_VAPID_PUBLIC_KEY  → clé publique VAPID (exposée au client)
- *   VAPID_PRIVATE_KEY             → clé privée VAPID (serveur uniquement)
- *   VAPID_SUBJECT                 → contact (ex: mailto:admin@taskmanage.app)
+ * Migration web-push VAPID → firebase-admin FCM :
+ * Le token FCM (stocké dans PushSubscription.endpoint) est utilisé
+ * comme identifiant de destination pour chaque message.
  *
- * Génération des clés : npx web-push generate-vapid-keys
+ * Variables d'environnement requises (serveur uniquement) :
+ *   FIREBASE_PROJECT_ID
+ *   FIREBASE_CLIENT_EMAIL
+ *   FIREBASE_PRIVATE_KEY
  *
- * Architecture : infrastructure — ne doit pas être importé dans domain/ ni application/
+ * Architecture : infrastructure — ne pas importer dans domain/ ni application/
  */
 
-import webpush from "web-push";
-
-// Configuration VAPID — initialisée une seule fois au démarrage du serveur
-webpush.setVapidDetails(
-  process.env.VAPID_SUBJECT ?? "mailto:admin@taskmanage.app",
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
-  process.env.VAPID_PRIVATE_KEY!
-);
+import { fcmAdmin } from "@/lib/firebase-admin";
 
 export interface PushPayload {
   title: string;
@@ -29,63 +24,66 @@ export interface PushPayload {
 }
 
 export interface PushSubscriptionData {
-  endpoint: string;
-  p256dh: string;
-  auth: string;
+  endpoint: string; // Contient le token FCM
+  p256dh: string;   // Inutilisé avec FCM (conservé pour compatibilité schéma)
+  auth: string;     // Inutilisé avec FCM (conservé pour compatibilité schéma)
 }
 
 /**
- * Envoie une notification push à un abonnement unique.
- * Retourne false si l'abonnement est expiré (410 Gone) — le caller doit alors le supprimer.
+ * Envoie une notification push FCM à un token unique.
+ * Retourne false si le token est expiré/invalide — le caller doit le supprimer.
  */
 export async function sendPushNotification(
   subscription: PushSubscriptionData,
   payload: PushPayload
 ): Promise<boolean> {
   try {
-    await webpush.sendNotification(
-      {
-        endpoint: subscription.endpoint,
-        keys: { p256dh: subscription.p256dh, auth: subscription.auth },
-      },
-      JSON.stringify({
+    await fcmAdmin.send({
+      token: subscription.endpoint,
+      notification: {
         title: payload.title,
-        body: payload.body,
-        url: payload.url ?? "/",
-        icon: payload.icon ?? "/android-192x192.png",
-      })
-    );
+        body:  payload.body,
+      },
+      webpush: {
+        notification: {
+          icon:  payload.icon ?? "/android/launchericon-192x192.png",
+          badge: "/android/launchericon-96x96.png",
+        },
+        fcmOptions: {
+          link: payload.url ?? "/",
+        },
+      },
+    });
     return true;
   } catch (error: unknown) {
-    // Abonnement expiré ou révoqué → signale au caller pour suppression
+    const code = (error as { code?: string })?.code;
     if (
-      error instanceof Object &&
-      "statusCode" in error &&
-      (error as { statusCode: number }).statusCode === 410
+      code === "messaging/registration-token-not-registered" ||
+      code === "messaging/invalid-registration-token"
     ) {
       return false;
     }
-    console.error("[Push] Erreur envoi notification :", error);
+    console.error("[FCM] Erreur envoi notification :", error);
     return false;
   }
 }
 
 /**
- * Envoie une notification push à tous les abonnements d'un utilisateur.
- * Retourne la liste des endpoints expirés à supprimer.
+ * Envoie une notification push FCM à tous les tokens d'un utilisateur.
+ * Retourne la liste des tokens expirés à supprimer.
  */
 export async function sendPushToSubscriptions(
   subscriptions: PushSubscriptionData[],
   payload: PushPayload
 ): Promise<string[]> {
-  const expiredEndpoints: string[] = [];
+  const expiredTokens: string[] = [];
 
   await Promise.all(
     subscriptions.map(async (sub) => {
       const success = await sendPushNotification(sub, payload);
-      if (!success) expiredEndpoints.push(sub.endpoint);
+      if (!success) expiredTokens.push(sub.endpoint);
     })
   );
 
-  return expiredEndpoints;
+  return expiredTokens;
 }
