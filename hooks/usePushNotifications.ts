@@ -102,19 +102,28 @@ export function usePushNotifications(): UsePushNotificationsReturn {
         return;
       }
 
-      // Étape 2 — Enregistre le SW Firebase au scope racine (requis par FCM)
+      // Étape 2 — Nettoyer TOUS les abonnements push résiduels sur TOUTES les registrations.
+      // Cause réelle de "push service error" : un abonnement résiduel sous un ancien scope
+      // (ex: /firebase-cloud-messaging-push-scope) bloque la création d'un nouvel abonnement.
+      // Chrome restreint les abonnements push par origine — pas seulement par scope SW.
+      const allRegistrations = await navigator.serviceWorker.getRegistrations();
+      for (const reg of allRegistrations) {
+        try {
+          const sub = await reg.pushManager.getSubscription();
+          if (sub) {
+            console.log("[FCM] Abonnement push résiduel trouvé sur scope:", reg.scope, "→ suppression");
+            await sub.unsubscribe();
+          }
+        } catch {
+          // SW redondant ou inaccessible — on ignore silencieusement
+        }
+      }
+
+      // Enregistre le SW Firebase au scope racine (requis par FCM)
       const swRegistration = await navigator.serviceWorker.register(
         "/firebase-messaging-sw.js",
         { scope: "/" }
       );
-
-      // Supprime tout ancien abonnement push (ex-clé VAPID Web Push incompatible avec FCM)
-      // Un abonnement avec une clé différente cause "Registration failed - push service error"
-      const existingSub = await swRegistration.pushManager.getSubscription();
-      if (existingSub) {
-        console.log("[FCM] Ancien abonnement push détecté → suppression avant renouvellement");
-        await existingSub.unsubscribe();
-      }
 
       // Attend que le SW soit actif avant d'appeler getToken()
       if (!swRegistration.active) {
