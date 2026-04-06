@@ -52,7 +52,10 @@ export function usePushNotifications(): UsePushNotificationsReturn {
 
     if (supported) {
       setPermission(Notification.permission as PermissionState);
-      setIsSubscribed(Notification.permission === "granted");
+      // isSubscribed = true uniquement si un token FCM est stocké en session
+      // (permission "granted" ne garantit pas qu'un token actif existe en base)
+      const cachedToken = sessionStorage.getItem("fcm_token");
+      setIsSubscribed(!!cachedToken && Notification.permission === "granted");
     }
   }, []);
 
@@ -85,12 +88,6 @@ export function usePushNotifications(): UsePushNotificationsReturn {
         return;
       }
 
-      // Étape 2 — Enregistre le Service Worker Firebase (requis par FCM)
-      const swRegistration = await navigator.serviceWorker.register(
-        "/firebase-messaging-sw.js",
-        { scope: "/" }
-      );
-
       const messaging = getFirebaseMessaging();
       if (!messaging) {
         console.error("[FCM] Firebase Messaging non disponible");
@@ -103,6 +100,17 @@ export function usePushNotifications(): UsePushNotificationsReturn {
         console.error("[FCM] NEXT_PUBLIC_FIREBASE_VAPID_KEY manquant");
         setIsLoading(false);
         return;
+      }
+
+      // Étape 2 — Récupère ou enregistre le Service Worker Firebase
+      // FCM cherche automatiquement /firebase-messaging-sw.js à la racine.
+      // On récupère l'enregistrement existant pour éviter les conflits avec sw.js (next-pwa).
+      let swRegistration = await navigator.serviceWorker.getRegistration("/firebase-messaging-sw.js");
+      if (!swRegistration) {
+        swRegistration = await navigator.serviceWorker.register(
+          "/firebase-messaging-sw.js",
+          { scope: "/firebase-cloud-messaging-push-scope" }
+        );
       }
 
       // Étape 3 — Récupère le token FCM (remplace pushManager.subscribe())
@@ -119,6 +127,7 @@ export function usePushNotifications(): UsePushNotificationsReturn {
 
       console.log("[FCM] Token obtenu avec succès");
       setFcmToken(token);
+      sessionStorage.setItem("fcm_token", token); // Persistance locale pour isSubscribed
 
       // Étape 4 — Sauvegarde le token en base
       await fetch("/api/push/subscribe", {
@@ -147,6 +156,7 @@ export function usePushNotifications(): UsePushNotificationsReturn {
       }
       setIsSubscribed(false);
       setFcmToken(null);
+      sessionStorage.removeItem("fcm_token");
     } catch (error) {
       console.error("[FCM] Erreur lors du désabonnement :", error);
     } finally {

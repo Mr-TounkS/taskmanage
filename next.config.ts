@@ -67,8 +67,8 @@ const securityHeaders = [
       "img-src 'self' data: blob: https://img.clerk.com https://images.clerk.dev",
       // Polices de caractères
       "font-src 'self' data:",
-      // Connexions réseau : self + Clerk API + Neon DB + Firebase FCM
-      "connect-src 'self' https://*.clerk.com https://*.clerk.accounts.dev https://*.neon.tech wss://*.neon.tech https://*.googleapis.com https://*.firebase.com https://*.firebaseio.com https://fcm.googleapis.com",
+      // Connexions réseau : self + Clerk API + Neon DB + Firebase FCM + Clerk telemetry
+      "connect-src 'self' https://*.clerk.com https://*.clerk.accounts.dev https://clerk-telemetry.com https://*.neon.tech wss://*.neon.tech https://*.googleapis.com https://*.firebase.com https://*.firebaseio.com https://fcm.googleapis.com",
       // Frames : Clerk utilise des iframes pour l'authentification
       "frame-src 'self' https://clerk.com https://*.clerk.accounts.dev https://challenges.cloudflare.com",
       // Workers : Service Worker PWA
