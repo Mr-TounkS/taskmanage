@@ -3,6 +3,7 @@ import "./globals.css";
 import { ClerkProvider } from "@clerk/nextjs";
 import OfflineBanner from "./components/OfflineBanner";
 import SWUpdatePrompt from "./components/SWUpdatePrompt";
+import PWARegister from "./components/PWARegister";
 
 export const metadata: Metadata = {
   title: "Task Manage",
@@ -34,6 +35,8 @@ export default function RootLayout({
           <link rel="apple-touch-icon" href="/icon512_rounded.png" />
         </head>
         <body>
+          {/* Enregistrement manuel du SW — contourne le bug App Router avec next-pwa */}
+          <PWARegister />
           {/* Bandeau offline — affiché automatiquement dès perte de connexion */}
           <OfflineBanner />
           {/* Prompt de mise à jour SW — remplace skipWaiting automatique */}
