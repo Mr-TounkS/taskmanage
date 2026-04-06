@@ -102,35 +102,52 @@ export function usePushNotifications(): UsePushNotificationsReturn {
         return;
       }
 
-      // Étape 2 — Enregistre le Service Worker Firebase et attend qu'il soit actif
-      // Cause de l'erreur "push service error" : getToken() appelé avant que le SW
-      // ait fini de s'installer. On attend explicitement l'état "activated".
+      // Étape 2 — Enregistre le SW Firebase au scope racine (requis par FCM)
+      // Scope "/" obligatoire : Firebase cherche le SW à la racine du domaine.
+      // Mécanisme de retry (3 tentatives) inspiré de la vidéo FCM de Sunny Savage
+      // pour gérer le cas où le SW n'est pas encore actif au premier chargement.
       const swRegistration = await navigator.serviceWorker.register(
         "/firebase-messaging-sw.js",
-        { scope: "/firebase-cloud-messaging-push-scope" }
+        { scope: "/" }
       );
 
-      // Attend que le SW soit actif (évite l'AbortError au premier chargement)
-      await new Promise<void>((resolve) => {
-        if (swRegistration.active) {
-          resolve();
-          return;
-        }
-        const sw = swRegistration.installing ?? swRegistration.waiting;
-        if (!sw) { resolve(); return; }
-        sw.addEventListener("statechange", () => {
-          if (swRegistration.active) resolve();
+      // Attend que le SW soit actif avant d'appeler getToken()
+      // (évite l'AbortError "push service error" au premier chargement)
+      if (!swRegistration.active) {
+        await new Promise<void>((resolve) => {
+          const sw = swRegistration.installing ?? swRegistration.waiting;
+          if (!sw) { resolve(); return; }
+          sw.addEventListener("statechange", () => {
+            if (swRegistration.active) resolve();
+          });
         });
-      });
+      }
 
-      // Étape 3 — Récupère le token FCM (remplace pushManager.subscribe())
-      const token = await getToken(messaging, {
-        vapidKey,
-        serviceWorkerRegistration: swRegistration,
-      });
+      // Étape 3 — Récupère le token FCM avec retry (3 tentatives max)
+      // Même stratégie que dans la vidéo "Push notifications FCM" de Sunny Savage :
+      // le SW peut ne pas être prêt au 1er appel → on réessaie jusqu'à 3 fois.
+      let token: string | null = null;
+      let attempt = 0;
+      const MAX_RETRIES = 3;
+
+      while (!token && attempt < MAX_RETRIES) {
+        attempt++;
+        try {
+          token = await getToken(messaging, {
+            vapidKey,
+            serviceWorkerRegistration: swRegistration,
+          });
+        } catch (retryErr) {
+          console.warn(`[FCM] Tentative ${attempt}/${MAX_RETRIES} échouée :`, retryErr);
+          if (attempt < MAX_RETRIES) {
+            // Courte pause avant de réessayer (laisse le SW s'activer)
+            await new Promise((r) => setTimeout(r, 1000));
+          }
+        }
+      }
 
       if (!token) {
-        console.error("[FCM] Token vide — vérifiez la configuration Firebase");
+        console.error("[FCM] Token vide après 3 tentatives — vérifiez la configuration Firebase");
         setIsLoading(false);
         return;
       }
