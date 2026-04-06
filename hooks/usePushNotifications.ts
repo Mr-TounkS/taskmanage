@@ -102,16 +102,26 @@ export function usePushNotifications(): UsePushNotificationsReturn {
         return;
       }
 
-      // Étape 2 — Récupère ou enregistre le Service Worker Firebase
-      // FCM cherche automatiquement /firebase-messaging-sw.js à la racine.
-      // On récupère l'enregistrement existant pour éviter les conflits avec sw.js (next-pwa).
-      let swRegistration = await navigator.serviceWorker.getRegistration("/firebase-messaging-sw.js");
-      if (!swRegistration) {
-        swRegistration = await navigator.serviceWorker.register(
-          "/firebase-messaging-sw.js",
-          { scope: "/firebase-cloud-messaging-push-scope" }
-        );
-      }
+      // Étape 2 — Enregistre le Service Worker Firebase et attend qu'il soit actif
+      // Cause de l'erreur "push service error" : getToken() appelé avant que le SW
+      // ait fini de s'installer. On attend explicitement l'état "activated".
+      const swRegistration = await navigator.serviceWorker.register(
+        "/firebase-messaging-sw.js",
+        { scope: "/firebase-cloud-messaging-push-scope" }
+      );
+
+      // Attend que le SW soit actif (évite l'AbortError au premier chargement)
+      await new Promise<void>((resolve) => {
+        if (swRegistration.active) {
+          resolve();
+          return;
+        }
+        const sw = swRegistration.installing ?? swRegistration.waiting;
+        if (!sw) { resolve(); return; }
+        sw.addEventListener("statechange", () => {
+          if (swRegistration.active) resolve();
+        });
+      });
 
       // Étape 3 — Récupère le token FCM (remplace pushManager.subscribe())
       const token = await getToken(messaging, {
