@@ -103,16 +103,20 @@ export function usePushNotifications(): UsePushNotificationsReturn {
       }
 
       // Étape 2 — Enregistre le SW Firebase au scope racine (requis par FCM)
-      // Scope "/" obligatoire : Firebase cherche le SW à la racine du domaine.
-      // Mécanisme de retry (3 tentatives) inspiré de la vidéo FCM de Sunny Savage
-      // pour gérer le cas où le SW n'est pas encore actif au premier chargement.
       const swRegistration = await navigator.serviceWorker.register(
         "/firebase-messaging-sw.js",
         { scope: "/" }
       );
 
+      // Supprime tout ancien abonnement push (ex-clé VAPID Web Push incompatible avec FCM)
+      // Un abonnement avec une clé différente cause "Registration failed - push service error"
+      const existingSub = await swRegistration.pushManager.getSubscription();
+      if (existingSub) {
+        console.log("[FCM] Ancien abonnement push détecté → suppression avant renouvellement");
+        await existingSub.unsubscribe();
+      }
+
       // Attend que le SW soit actif avant d'appeler getToken()
-      // (évite l'AbortError "push service error" au premier chargement)
       if (!swRegistration.active) {
         await new Promise<void>((resolve) => {
           const sw = swRegistration.installing ?? swRegistration.waiting;
@@ -123,31 +127,26 @@ export function usePushNotifications(): UsePushNotificationsReturn {
         });
       }
 
-      // Étape 3 — Récupère le token FCM avec retry (3 tentatives max)
-      // Même stratégie que dans la vidéo "Push notifications FCM" de Sunny Savage :
-      // le SW peut ne pas être prêt au 1er appel → on réessaie jusqu'à 3 fois.
+      // Étape 3 — Récupère le token FCM (fallback sans SW si SW explicite échoue)
       let token: string | null = null;
-      let attempt = 0;
-      const MAX_RETRIES = 3;
-
-      while (!token && attempt < MAX_RETRIES) {
-        attempt++;
+      try {
+        token = await getToken(messaging, {
+          vapidKey,
+          serviceWorkerRegistration: swRegistration,
+        });
+      } catch (tokenErr: unknown) {
+        console.warn("[FCM] Échec avec SW explicite, tentative sans SW :", tokenErr);
         try {
-          token = await getToken(messaging, {
-            vapidKey,
-            serviceWorkerRegistration: swRegistration,
-          });
-        } catch (retryErr) {
-          console.warn(`[FCM] Tentative ${attempt}/${MAX_RETRIES} échouée :`, retryErr);
-          if (attempt < MAX_RETRIES) {
-            // Courte pause avant de réessayer (laisse le SW s'activer)
-            await new Promise((r) => setTimeout(r, 1000));
-          }
+          token = await getToken(messaging, { vapidKey });
+        } catch (fallbackErr) {
+          console.error("[FCM] Échec total — vérifiez Application → Service Workers", fallbackErr);
+          setIsLoading(false);
+          return;
         }
       }
 
       if (!token) {
-        console.error("[FCM] Token vide après 3 tentatives — vérifiez la configuration Firebase");
+        console.error("[FCM] Token vide — configuration Firebase incorrecte");
         setIsLoading(false);
         return;
       }
