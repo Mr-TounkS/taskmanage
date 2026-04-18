@@ -57,6 +57,8 @@ node_modules
 # Claude Code configuration (local dev tooling only)
 .claude/
 CLAUDE.md
+claude-config/
+claude-code-config.zip
 .agents/
 .windsurf/
 skills-lock.json
