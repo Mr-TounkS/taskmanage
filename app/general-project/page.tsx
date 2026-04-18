@@ -39,7 +39,7 @@ const page = () => {
             setFromCache(false)
             saveToCache(cacheKeyAssociated(email), associated)
         } catch (error) {
-            toast.error("Erreur lors du chargement des projets:")
+            toast.error("Error loading projects:")
             // Fallback cache si la requête échoue
             const cached = readFromCache<Project[]>(cacheKeyAssociated(email))
             if (cached) {
@@ -64,13 +64,13 @@ const page = () => {
                 await addUserToProject(email, inviteCode)
                 fetchProjects(email)
                 setInviteCode("")
-                toast.success("Vous pouvez maintenant collaborer sur ce projet.")
+                toast.success("You can now collaborate on this project.")
             } else {
-                toast.error("Il manque le code du projet !")
+                toast.error("Missing project code!")
             }
 
         } catch (error) {
-            toast.error("Code invalide ou vous appartenez deja a ce projet !")
+            toast.error("Invalid code or you already belong to this project!")
         }
     }
 
@@ -79,21 +79,22 @@ const page = () => {
             {fromCache && !isOnline && (
                 <div className="flex items-center gap-2 text-xs text-base-content/50 mb-4 bg-base-200 rounded-lg px-3 py-2">
                     <span>📦</span>
-                    <span>Données hors ligne — dernière synchronisation depuis votre session précédente</span>
+                    <span>Offline data — last synced from your previous session</span>
                 </div>
             )}
             <div className="flex">
                 <div className="mb-4">
                     <input
+                        suppressHydrationWarning
                         type="text"
                         value={inviteCode}
                         onChange={(e) => setInviteCode(e.target.value)}
-                        placeholder="Code d'invitation"
+                        placeholder="Invitation code"
                         className="w-full p-2 input input-bordered"
                     />
                 </div>
                 <button className="btn btn-primary ml-4" onClick={handleSubmit}>
-                    Rejoindre <SquarePlus className="w-4" />
+                    Join <SquarePlus className="w-4" />
                 </button>
             </div>
             <div>
@@ -114,7 +115,7 @@ const page = () => {
                   <EmptyState
                   imageSrc="/empty-project.png"
                   imageAlt="Picture of an empty project"
-                  message={isOnline ? "Aucun projet associé" : "Aucune donnée en cache — visitez vos projets en ligne d'abord"}
+                  message={isOnline ? "No associated projects" : "No cached data — visit your projects online first"}
                   />
                 </div>
               )}

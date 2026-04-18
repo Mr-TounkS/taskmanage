@@ -6,6 +6,7 @@ import {
 } from '../../domain/repositories/IProjectRepository';
 import { ProjectEntity } from '../../domain/entities/Project';
 import { UserEntity } from '../../domain/entities/User';
+import { ProjectRole } from '../../domain/entities/ProjectUser';
 
 export class PrismaProjectRepository implements IProjectRepository {
   constructor(private readonly prisma: PrismaClient) { }
@@ -17,7 +18,18 @@ export class PrismaProjectRepository implements IProjectRepository {
     inviteCode: string
   ): Promise<ProjectEntity> {
     return this.prisma.project.create({
-      data: { name, description, inviteCode, createdById },
+      data: {
+        name,
+        description,
+        inviteCode,
+        createdById,
+        users: {
+          create: {
+            userId: createdById,
+            role: 'PO'
+          }
+        }
+      },
     }) as Promise<ProjectEntity>;
   }
 
@@ -32,14 +44,14 @@ export class PrismaProjectRepository implements IProjectRepository {
       where: { id: projectId },
       include: {
         tasks: { include: { user: true, createdBy: true } },
-        users: { select: { user: { select: { id: true, name: true, email: true } } } },
+        users: { include: { user: { select: { id: true, name: true, email: true, imageUrl: true } } } },
         createdBy: true,
       },
     });
     if (!project) return null;
     return {
       ...project,
-      users: project.users.map((entry) => entry.user),
+      users: project.users.map((entry) => ({ ...entry.user, role: entry.role as ProjectRole })),
     } as ProjectWithDetails;
   }
 
@@ -54,12 +66,12 @@ export class PrismaProjectRepository implements IProjectRepository {
       where: { createdBy: { email } },
       include: {
         tasks: { include: { user: true, createdBy: true } },
-        users: { select: { user: { select: { id: true, name: true, email: true } } } },
+        users: { include: { user: { select: { id: true, name: true, email: true, imageUrl: true } } } },
       },
     });
     return projects.map((p) => ({
       ...p,
-      users: p.users.map((entry) => entry.user),
+      users: p.users.map((entry) => ({ ...entry.user, role: entry.role as ProjectRole })),
     })) as ProjectWithFlatUsers[];
   }
 
@@ -68,17 +80,17 @@ export class PrismaProjectRepository implements IProjectRepository {
       where: { users: { some: { user: { email } } } },
       include: {
         tasks: true,
-        users: { select: { user: { select: { id: true, name: true, email: true } } } },
+        users: { include: { user: { select: { id: true, name: true, email: true, imageUrl: true } } } },
       },
     });
     return projects.map((p) => ({
       ...p,
-      users: p.users.map((entry) => entry.user),
+      users: p.users.map((entry) => ({ ...entry.user, role: entry.role as ProjectRole })),
     })) as ProjectWithFlatUsers[];
   }
 
   async findWithAllUsers(projectId: string): Promise<(Omit<ProjectEntity, 'users'> & {
-    users: { user: UserEntity }[];
+    users: { user: UserEntity; role: ProjectRole }[];
     createdBy: UserEntity;
   }) | null> {
     const project = await this.prisma.project.findUnique({
@@ -88,18 +100,25 @@ export class PrismaProjectRepository implements IProjectRepository {
         createdBy: true,
       },
     });
-    return project as unknown as (Omit<ProjectEntity, 'users'> & {
-      users: { user: UserEntity }[];
-      createdBy: UserEntity;
-    }) | null;
+    if (!project) return null;
+    return {
+      ...project,
+      users: project.users.map(u => ({ user: u.user as UserEntity, role: u.role as ProjectRole }))
+    } as any;
   }
 
   async delete(projectId: string): Promise<void> {
     await this.prisma.project.delete({ where: { id: projectId } });
   }
 
-  async addUser(userId: string, projectId: string): Promise<void> {
-    await this.prisma.projectUser.create({ data: { userId, projectId } });
+  async addUser(userId: string, projectId: string, role: ProjectRole = 'MEMBER'): Promise<void> {
+    await this.prisma.projectUser.create({
+      data: {
+        userId,
+        projectId,
+        role
+      }
+    });
   }
 
   async isUserAlreadyMember(userId: string, projectId: string): Promise<boolean> {

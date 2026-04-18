@@ -1,16 +1,9 @@
 /**
  * Algorithme SGR — Score Global de Risque
  *
- * Formule : SGR = 0.30×R_WIP + 0.25×R_CT + 0.20×R_Age + 0.15×R_Throughput + 0.10×R_Tech
- *
- * Chaque indicateur R_i ∈ [0, 100] (normalisé).
- * Sources : Kanban Guide 2025, Loi de Little, SLE au 85e percentile.
+ * Formule académique : SGR = λ1*R_flow + λ2*R_dev + λ3*R_quality
  *
  * Section mémoire : 2.3 — Algorithme SGR
- *
- * LIMITATION : Les pondérations sont établies par analyse de la littérature
- * (Lean Software Development, Kanban Guide 2025). Elles n'ont pas été validées
- * empiriquement dans le cadre de ce mémoire (cf. section 4.3).
  */
 
 import {
@@ -19,9 +12,12 @@ import {
   SGRIndicator,
   SGRTask,
   SGRTechDebt,
+  SGRGitHubActivity,
   SGRColumnConfig,
   POIDS_SGR,
+  POIDS_INTERNES,
   SEUILS_SGR,
+  VALEURS_CRITIQUES,
   PERCENTILE_SLE,
   FENETRE_THROUGHPUT_DAYS,
 } from './types';
@@ -50,7 +46,6 @@ function percentile(sorted: number[], p: number): number {
 
 /**
  * Calcule le Cycle Time d'une tâche en jours.
- * Retourne null si les données sont incomplètes.
  */
 function cycletime(task: SGRTask): number | null {
   if (!task.startedAt || !task.completedAt) return null;
@@ -60,7 +55,6 @@ function cycletime(task: SGRTask): number | null {
 
 /**
  * Calcule l'âge d'une tâche en cours en jours (Work Item Age).
- * Retourne null si la tâche n'est pas encore démarrée.
  */
 function workItemAge(task: SGRTask, maintenant: Date): number | null {
   if (!task.startedAt) return null;
@@ -69,416 +63,161 @@ function workItemAge(task: SGRTask, maintenant: Date): number | null {
 }
 
 // ---------------------------------------------------------------------------
-// Calcul R_WIP — Dépassement des limites Work In Progress (poids : 30%)
+// Indicateurs de base
 // ---------------------------------------------------------------------------
 
-/**
- * R_WIP mesure le dépassement des limites WIP par colonne Kanban.
- * Fondé sur la Loi de Little : CT = WIP / Throughput.
- * Un WIP excessif dégrade mécaniquement le Cycle Time.
- *
- * @param tasks       - Toutes les tâches du projet
- * @param configs     - Limites WIP définies par colonne
- * @returns SGRIndicator avec score normalisé [0, 100]
- */
-function calculerRWIP(
-  tasks: SGRTask[],
-  configs: SGRColumnConfig[]
-): SGRIndicator {
-  // Colonnes configurées avec une limite réelle (> 0)
+function calculerRWIP(tasks: SGRTask[], configs: SGRColumnConfig[]): SGRIndicator {
   const colonnesAvecLimite = configs.filter((c) => c.wipLimit > 0);
-
   if (colonnesAvecLimite.length === 0) {
-    return {
-      score: 0,
-      weight: POIDS_SGR.WIP,
-      contribution: 0,
-      details: { message: 'Aucune limite WIP configurée' },
-    };
+    return { score: 0, weight: POIDS_INTERNES.FLOW.WIP, contribution: 0, details: {} };
   }
 
-  const violations: number[] = [];
-  const details: Record<string, number | string> = {};
-
-  for (const config of colonnesAvecLimite) {
+  const violations = colonnesAvecLimite.map(config => {
     const wipActuel = tasks.filter((t) => t.status === config.column).length;
-    const depassement = Math.max(0, wipActuel - config.wipLimit);
-    const ratioViolation = depassement / config.wipLimit; // [0, ∞)
+    return clamp((Math.max(0, wipActuel - config.wipLimit) / config.wipLimit) * 100);
+  });
 
-    details[`wip_${config.column}`] = wipActuel;
-    details[`limite_${config.column}`] = config.wipLimit;
-    details[`depassement_${config.column}`] = depassement;
-
-    // Normalisation : 100% de dépassement = score max (100)
-    violations.push(clamp(ratioViolation * 100));
-  }
-
-  // On prend la violation maximale (colonne la plus en tension)
   const score = Math.max(...violations);
-
-  return {
-    score,
-    weight: POIDS_SGR.WIP,
-    contribution: score * POIDS_SGR.WIP,
-    details,
-  };
+  return { score, weight: POIDS_INTERNES.FLOW.WIP, contribution: score * POIDS_INTERNES.FLOW.WIP, details: {} };
 }
 
-// ---------------------------------------------------------------------------
-// Calcul R_CT — Cycle Time vs historique (poids : 25%)
-// ---------------------------------------------------------------------------
-
-/**
- * R_CT mesure l'écart entre le Cycle Time récent et la moyenne historique.
- * Seuil de référence : SLE au 85e percentile des Cycle Times historiques.
- *
- * @param tasks       - Toutes les tâches du projet (terminées + en cours)
- * @param maintenant  - Date de référence du calcul
- */
 function calculerRCT(tasks: SGRTask[], maintenant: Date): SGRIndicator {
-  const tachesTerminees = tasks.filter(
-    (t) => t.status === 'Done' && t.startedAt && t.completedAt
-  );
+  const tachesTerminees = tasks.filter(t => t.status === 'Done' && t.startedAt && t.completedAt);
+  if (tachesTerminees.length < 2) return { score: 0, weight: POIDS_INTERNES.FLOW.CT, contribution: 0, details: {} };
 
-  if (tachesTerminees.length < 2) {
-    return {
-      score: 0,
-      weight: POIDS_SGR.CYCLE_TIME,
-      contribution: 0,
-      details: { message: 'Historique insuffisant (< 2 tâches terminées)' },
-    };
-  }
+  const cycleTimes = tachesTerminees.map(cycletime).filter((ct): ct is number => ct !== null).sort((a, b) => a - b);
+  const ctMoyenne = cycleTimes.reduce((a, b) => a + b, 0) / cycleTimes.length;
+  
+  const recentes = tachesTerminees.sort((a, b) => b.completedAt!.getTime() - a.completedAt!.getTime()).slice(0, 5);
+  const ctRecents = recentes.map(cycletime).filter((ct): ct is number => ct !== null);
+  const ctActuel = ctRecents.reduce((a, b) => a + b, 0) / ctRecents.length;
 
-  // Cycle Times historiques (tous)
-  const cycleTimesHistoriques = tachesTerminees
-    .map(cycletime)
-    .filter((ct): ct is number => ct !== null)
-    .sort((a, b) => a - b);
-
-  const ctMoyenne =
-    cycleTimesHistoriques.reduce((a, b) => a + b, 0) /
-    cycleTimesHistoriques.length;
-
-  const sle85 = percentile(cycleTimesHistoriques, PERCENTILE_SLE);
-
-  // Cycle Time "récent" : moyenne des 5 dernières tâches terminées
-  const recentes = tachesTerminees
-    .filter((t) => t.completedAt !== null)
-    .sort((a, b) => b.completedAt!.getTime() - a.completedAt!.getTime())
-    .slice(0, 5);
-
-  const ctRecents = recentes
-    .map(cycletime)
-    .filter((ct): ct is number => ct !== null);
-
-  if (ctRecents.length === 0) {
-    return {
-      score: 0,
-      weight: POIDS_SGR.CYCLE_TIME,
-      contribution: 0,
-      details: { ctMoyenne, sle85, message: 'Aucune tâche récente calculable' },
-    };
-  }
-
-  const ctActuel =
-    ctRecents.reduce((a, b) => a + b, 0) / ctRecents.length;
-
-  // Écart normalisé : 0 si CT actuel ≤ moyenne, 100 si CT actuel ≥ 2× la moyenne
-  const ecart = ctMoyenne > 0 ? (ctActuel - ctMoyenne) / ctMoyenne : 0;
-  const score = clamp(ecart * 100);
-
-  return {
-    score,
-    weight: POIDS_SGR.CYCLE_TIME,
-    contribution: score * POIDS_SGR.CYCLE_TIME,
-    details: {
-      ctActuel: Math.round(ctActuel * 10) / 10,
-      ctMoyenne: Math.round(ctMoyenne * 10) / 10,
-      sle85: Math.round(sle85 * 10) / 10,
-      nbTachesHistorique: cycleTimesHistoriques.length,
-      nbTachesRecentes: ctRecents.length,
-      depassementSLE: ctActuel > sle85 ? 1 : 0,
-    },
-  };
+  const score = clamp(ctMoyenne > 0 ? ((ctActuel - ctMoyenne) / ctMoyenne) * 100 : 0);
+  return { score, weight: POIDS_INTERNES.FLOW.CT, contribution: score * POIDS_INTERNES.FLOW.CT, details: {} };
 }
 
-// ---------------------------------------------------------------------------
-// Calcul R_Age — Work Item Age (poids : 20%)
-// ---------------------------------------------------------------------------
-
-/**
- * R_Age mesure le pourcentage de tâches "In Progress" dont l'âge dépasse
- * le SLE au 85e percentile des Cycle Times historiques.
- * Un âge élevé signale des tâches bloquées ou sous-estimées.
- *
- * @param tasks       - Toutes les tâches du projet
- * @param maintenant  - Date de référence du calcul
- */
 function calculerRAge(tasks: SGRTask[], maintenant: Date): SGRIndicator {
-  const enCours = tasks.filter(
-    (t) => t.status === 'In Progress' && t.startedAt
-  );
+  const enCours = tasks.filter(t => t.status === 'In Progress' && t.startedAt);
+  if (enCours.length === 0) return { score: 0, weight: POIDS_INTERNES.FLOW.AGE, contribution: 0, details: {} };
 
-  if (enCours.length === 0) {
-    return {
-      score: 0,
-      weight: POIDS_SGR.AGE,
-      contribution: 0,
-      details: { message: 'Aucune tâche en cours' },
-    };
-  }
-
-  // SLE_85 calculé sur les Cycle Times historiques
-  const cycleTimesHistoriques = tasks
-    .filter((t) => t.status === 'Done' && t.startedAt && t.completedAt)
-    .map(cycletime)
-    .filter((ct): ct is number => ct !== null)
-    .sort((a, b) => a - b);
-
-  const sle85 =
-    cycleTimesHistoriques.length > 0
-      ? percentile(cycleTimesHistoriques, PERCENTILE_SLE)
-      : Infinity; // Pas d'historique : on ne peut pas déclencher d'alerte
-
-  const agesEnCours = enCours
-    .map((t) => workItemAge(t, maintenant))
-    .filter((age): age is number => age !== null);
-
-  const tachesAuDelaSLE = agesEnCours.filter((age) => age > sle85).length;
+  const cycleTimes = tasks.filter(t => t.status === 'Done' && t.startedAt && t.completedAt)
+    .map(cycletime).filter((ct): ct is number => ct !== null).sort((a, b) => a - b);
+  
+  const sle85 = cycleTimes.length > 0 ? percentile(cycleTimes, PERCENTILE_SLE) : Infinity;
+  const ages = enCours.map(t => workItemAge(t, maintenant)).filter((age): age is number => age !== null);
+  const tachesAuDelaSLE = ages.filter(age => age > sle85).length;
+  
   const score = clamp((tachesAuDelaSLE / enCours.length) * 100);
-
-  return {
-    score,
-    weight: POIDS_SGR.AGE,
-    contribution: score * POIDS_SGR.AGE,
-    details: {
-      nbEnCours: enCours.length,
-      nbDepassantSLE: tachesAuDelaSLE,
-      sle85: sle85 === Infinity ? 'N/A' : Math.round(sle85 * 10) / 10,
-      ageMoyen:
-        agesEnCours.length > 0
-          ? Math.round(
-              (agesEnCours.reduce((a, b) => a + b, 0) / agesEnCours.length) *
-                10
-            ) / 10
-          : 0,
-    },
-  };
+  return { score, weight: POIDS_INTERNES.FLOW.AGE, contribution: score * POIDS_INTERNES.FLOW.AGE, details: {} };
 }
 
-// ---------------------------------------------------------------------------
-// Calcul R_Throughput — Débit de l'équipe (poids : 15%)
-// ---------------------------------------------------------------------------
-
-/**
- * R_Throughput mesure la baisse du débit (tâches/semaine) par rapport
- * à la moyenne sur les 90 derniers jours.
- * Fondé sur la définition du Throughput dans le Kanban Guide 2025.
- *
- * @param tasks       - Toutes les tâches du projet
- * @param maintenant  - Date de référence du calcul
- */
 function calculerRThroughput(tasks: SGRTask[], maintenant: Date): SGRIndicator {
   const msParJour = 1000 * 60 * 60 * 24;
-  const debut90j = new Date(
-    maintenant.getTime() - FENETRE_THROUGHPUT_DAYS * msParJour
-  );
+  const debut90j = new Date(maintenant.getTime() - FENETRE_THROUGHPUT_DAYS * msParJour);
   const debut7j = new Date(maintenant.getTime() - 7 * msParJour);
 
-  const tachesTerminees = tasks.filter(
-    (t) => t.status === 'Done' && t.completedAt !== null
-  );
+  const terminees = tasks.filter(t => t.status === 'Done' && t.completedAt !== null);
+  const taches90j = terminees.filter(t => t.completedAt! >= debut90j);
+  if (taches90j.length === 0) return { score: 0, weight: POIDS_INTERNES.FLOW.THROUGHPUT, contribution: 0, details: {} };
 
-  // Tâches terminées dans la fenêtre de 90 jours
-  const taches90j = tachesTerminees.filter(
-    (t) => t.completedAt! >= debut90j && t.completedAt! <= maintenant
-  );
+  const thMoyen = (taches90j.length / FENETRE_THROUGHPUT_DAYS) * 7;
+  const thActuel = terminees.filter(t => t.completedAt! >= debut7j).length;
 
-  if (taches90j.length === 0) {
-    return {
-      score: 0,
-      weight: POIDS_SGR.THROUGHPUT,
-      contribution: 0,
-      details: { message: 'Aucune tâche terminée dans les 90 derniers jours' },
-    };
-  }
-
-  // Débit moyen sur 90 jours (en tâches/semaine)
-  const throughputMoyen90j = (taches90j.length / FENETRE_THROUGHPUT_DAYS) * 7;
-
-  // Débit de la semaine courante
-  const taches7j = tachesTerminees.filter(
-    (t) => t.completedAt! >= debut7j && t.completedAt! <= maintenant
-  );
-  const throughputActuel = taches7j.length; // tâches/semaine courante
-
-  // Score : 0 si débit stable ou en hausse, 100 si débit nul
-  const baisse = throughputMoyen90j > 0
-    ? (throughputMoyen90j - throughputActuel) / throughputMoyen90j
-    : 0;
-  const score = clamp(baisse * 100);
-
-  return {
-    score,
-    weight: POIDS_SGR.THROUGHPUT,
-    contribution: score * POIDS_SGR.THROUGHPUT,
-    details: {
-      throughputMoyen90j: Math.round(throughputMoyen90j * 10) / 10,
-      throughputActuel,
-      nbTaches90j: taches90j.length,
-      nbTaches7j: taches7j.length,
-    },
-  };
+  const score = clamp(thMoyen > 0 ? ((thMoyen - thActuel) / thMoyen) * 100 : 0);
+  return { score, weight: POIDS_INTERNES.FLOW.THROUGHPUT, contribution: score * POIDS_INTERNES.FLOW.THROUGHPUT, details: {} };
 }
 
-// ---------------------------------------------------------------------------
-// Calcul R_Tech — Dette Technique SonarQube (poids : 10%)
-// ---------------------------------------------------------------------------
+function calculerRDev(github?: SGRGitHubActivity): SGRIndicator {
+  if (!github) return { score: 0, weight: POIDS_SGR.DEV, contribution: 0, details: {} };
 
-/**
- * R_Tech estime le risque lié à la dette technique.
- * Source : données SonarQube (bugs bloquants, code smells, dette en jours).
- * Si les données SonarQube sont absentes, le score est 0 (conservateur).
- *
- * Seuils d'alerte :
- *   - > 5 bugs bloquants → contribution maximale bugs
- *   - dette > 5 jours-homme → contribution maximale dette
- */
-function calculerRTech(techDebt?: SGRTechDebt): SGRIndicator {
-  if (!techDebt) {
-    return {
-      score: 0,
-      weight: POIDS_SGR.TECH,
-      contribution: 0,
-      details: { message: 'Données SonarQube non disponibles' },
-    };
-  }
+  const scoreOpen = clamp((github.prOpen / VALEURS_CRITIQUES.PR_OPEN) * 100);
+  const scoreDelay = clamp((github.prDelayDays / VALEURS_CRITIQUES.PR_DELAY_DAYS) * 100);
+  const scoreStuck = clamp((github.prStuck / VALEURS_CRITIQUES.PR_STUCK) * 100);
 
-  const SEUIL_BUGS = 5;
-  const SEUIL_DETTE_DAYS = 5;
-  const SEUIL_SMELLS = 50;
-
-  // Score bugs : 0 pour 0 bug, 100 pour ≥ SEUIL_BUGS bugs bloquants
-  const scoreBugs = clamp((techDebt.bugsBloquants / SEUIL_BUGS) * 100);
-
-  // Score dette technique : 0 pour 0 jour, 100 pour ≥ SEUIL_DETTE_DAYS jours
-  const scoreDette = clamp(
-    (techDebt.detteTechniqueDays / SEUIL_DETTE_DAYS) * 100
-  );
-
-  // Score code smells : contribution modérée (indicateur secondaire)
-  const scoreSmells = clamp((techDebt.codeSmells / SEUIL_SMELLS) * 100);
-
-  // Agrégation pondérée : bugs = 50%, dette = 30%, smells = 20%
   const score = clamp(
-    scoreBugs * 0.5 + scoreDette * 0.3 + scoreSmells * 0.2
+    scoreOpen * POIDS_INTERNES.DEV.PR_OPEN +
+    scoreDelay * POIDS_INTERNES.DEV.PR_DELAY +
+    scoreStuck * POIDS_INTERNES.DEV.PR_STUCK
   );
 
-  return {
-    score,
-    weight: POIDS_SGR.TECH,
-    contribution: score * POIDS_SGR.TECH,
-    details: {
-      bugsBloquants: techDebt.bugsBloquants,
-      codeSmells: techDebt.codeSmells,
-      detteTechniqueDays: techDebt.detteTechniqueDays,
-      scoreBugs: Math.round(scoreBugs),
-      scoreDette: Math.round(scoreDette),
-      scoreSmells: Math.round(scoreSmells),
-    },
-  };
+  return { score, weight: POIDS_SGR.DEV, contribution: score * POIDS_SGR.DEV, details: { prOpen: github.prOpen, prDelayDays: github.prDelayDays, prStuck: github.prStuck } };
+}
+
+function calculerRQuality(techDebt?: SGRTechDebt): SGRIndicator {
+  if (!techDebt) return { score: 0, weight: POIDS_SGR.QUALITY, contribution: 0, details: {} };
+
+  const scoreBugs = clamp((techDebt.bugsBloquants / VALEURS_CRITIQUES.BUGS_CRIT) * 100);
+  const scoreDette = clamp((techDebt.detteTechniqueDays / VALEURS_CRITIQUES.DEBT_DAYS) * 100);
+  const scoreSmells = clamp((techDebt.codeSmells / VALEURS_CRITIQUES.SMELLS) * 100);
+
+  const score = clamp(
+    scoreBugs * POIDS_INTERNES.QUALITY.BUGS +
+    scoreDette * POIDS_INTERNES.QUALITY.DEBT +
+    scoreSmells * POIDS_INTERNES.QUALITY.SMELLS
+  );
+
+  return { score, weight: POIDS_SGR.QUALITY, contribution: score * POIDS_SGR.QUALITY, details: { bugsBloquants: techDebt.bugsBloquants, codeSmells: techDebt.codeSmells, detteTechniqueDays: techDebt.detteTechniqueDays } };
 }
 
 // ---------------------------------------------------------------------------
-// Interprétation du score
+// Interprétation
 // ---------------------------------------------------------------------------
 
-/**
- * Détermine le niveau de risque à partir du score SGR.
- */
-function interpreterNiveau(
-  sgr: number
-): SGRResult['niveau'] {
+function interpreterNiveau(sgr: number): SGRResult['niveau'] {
   if (sgr <= SEUILS_SGR.FAIBLE) return 'faible';
   if (sgr <= SEUILS_SGR.MODERE) return 'modéré';
   if (sgr <= SEUILS_SGR.ELEVE) return 'élevé';
   return 'critique';
 }
 
-/**
- * Génère les alertes lisibles à partir des indicateurs calculés.
- */
 function genererAlertes(indicateurs: SGRResult['indicateurs']): string[] {
   const alertes: string[] = [];
-
-  if (indicateurs.wip.score > 0) {
-    alertes.push(
-      `Limite WIP dépassée — score R_WIP : ${Math.round(indicateurs.wip.score)}/100`
-    );
-  }
-  if (indicateurs.cycleTime.score > 50) {
-    alertes.push(
-      `Cycle Time élevé (+${Math.round(indicateurs.cycleTime.score)}% vs historique)`
-    );
-  }
-  if (indicateurs.age.score > 20) {
-    alertes.push(
-      `${Math.round(indicateurs.age.score)}% des tâches en cours dépassent le SLE`
-    );
-  }
-  if (indicateurs.throughput.score > 30) {
-    alertes.push(
-      `Débit en baisse de ${Math.round(indicateurs.throughput.score)}% vs moyenne 90 jours`
-    );
-  }
-  if (indicateurs.tech.score > 0) {
-    alertes.push(
-      `Dette technique détectée — score R_Tech : ${Math.round(indicateurs.tech.score)}/100`
-    );
-  }
-
+  if (indicateurs.wip.score > 0) alertes.push(`Limite WIP dépassée (${Math.round(indicateurs.wip.score)}%)`);
+  if (indicateurs.github && indicateurs.github.score > 30) alertes.push(`Activité GitHub à risque (${Math.round(indicateurs.github.score)}%)`);
+  if (indicateurs.tech.score > 30) alertes.push(`Dette technique élevée (${Math.round(indicateurs.tech.score)}%)`);
   return alertes;
 }
 
 // ---------------------------------------------------------------------------
-// Fonction principale exportée
+// Export principal
 // ---------------------------------------------------------------------------
 
-/**
- * Calcule le Score Global de Risque (SGR) pour un projet donné.
- *
- * @param input - Données du projet : tâches, configs WIP, dette technique
- * @returns SGRResult avec le score agrégé, le niveau de risque et le détail
- *
- * @example
- * const result = calculateSGR({ tasks, columnConfigs, techDebt });
- * console.log(result.sgr);     // ex: 47.3
- * console.log(result.niveau);  // "modéré"
- */
 export function calculateSGR(input: SGRInput): SGRResult {
   const maintenant = input.dateReference ?? new Date();
 
-  // Calcul de chaque indicateur
   const wip = calculerRWIP(input.tasks, input.columnConfigs);
   const cycleTime = calculerRCT(input.tasks, maintenant);
   const age = calculerRAge(input.tasks, maintenant);
   const throughput = calculerRThroughput(input.tasks, maintenant);
-  const tech = calculerRTech(input.techDebt);
+  const github = calculerRDev(input.githubActivity);
+  const tech = calculerRQuality(input.techDebt);
 
-  // Agrégation pondérée : SGR = Σ (score_i × poids_i)
-  const sgr = clamp(
-    wip.contribution +
-      cycleTime.contribution +
-      age.contribution +
-      throughput.contribution +
-      tech.contribution
+  const scoreFlow = clamp(
+    wip.score * POIDS_INTERNES.FLOW.WIP +
+    cycleTime.score * POIDS_INTERNES.FLOW.CT +
+    age.score * POIDS_INTERNES.FLOW.AGE +
+    throughput.score * POIDS_INTERNES.FLOW.THROUGHPUT
   );
 
-  const indicateurs = { wip, cycleTime, age, throughput, tech };
+  const scoreDev = github.score;
+  const scoreQuality = tech.score;
+
+  const sgr = clamp(
+    scoreFlow * POIDS_SGR.FLOW +
+    scoreDev * POIDS_SGR.DEV +
+    scoreQuality * POIDS_SGR.QUALITY
+  );
+
+  const indicateurs = { wip, cycleTime, age, throughput, github, tech };
 
   return {
     sgr: Math.round(sgr * 10) / 10,
     niveau: interpreterNiveau(sgr),
+    dimensions: {
+      flow: Math.round(scoreFlow * 10) / 10,
+      dev: Math.round(scoreDev * 10) / 10,
+      quality: Math.round(scoreQuality * 10) / 10,
+    },
     indicateurs,
     alertes: genererAlertes(indicateurs),
   };

@@ -1,21 +1,14 @@
 "use client"
 
 /**
- * KanbanCard — Carte tâche draggable dans le tableau Kanban
- *
- * Représente une tâche sous forme de carte avec :
- * - Titre, assigné, date de livraison
- * - Indicateur visuel de retard (dueDate dépassée)
- * - Liens vers le détail et suppression (si créateur)
- *
+ * KanbanCard — Carte tâche draggable, redesign UI Linear/Notion
  * Section mémoire : 3.2 — Kanban + fonctionnalités PWA
  */
 
 import { Draggable } from "@hello-pangea/dnd"
 import { Task } from "@/app/type"
-import UserInfo from "./UserInfo"
 import Link from "next/link"
-import { ArrowRight, Trash, AlertCircle, AlertTriangle, Minus, ArrowDown } from "lucide-react"
+import { Calendar, Flag, MoreHorizontal, Trash } from "lucide-react"
 
 interface KanbanCardProps {
     task: Task
@@ -24,27 +17,36 @@ interface KanbanCardProps {
     onDelete?: (id: string) => void
 }
 
-// Badge de priorité — compact sur mobile, complet sur desktop
-function PriorityBadge({ priority }: { priority?: string }) {
-    const config = {
-        HIGH: { classe: "badge-error", icone: AlertTriangle, label: "Élevée" },
-        MEDIUM: { classe: "badge-warning", icone: Minus, label: "Moyenne" },
-        LOW: { classe: "badge-success", icone: ArrowDown, label: "Faible" },
+// Icône de flag colorée selon la priorité (correspond aux flags de la capture)
+function PriorityRow({ priority }: { priority?: string }) {
+    const config: Record<string, { flagClass: string; label: string }> = {
+        HIGH:   { flagClass: "text-red-500",  label: "High priority" },
+        MEDIUM: { flagClass: "text-gray-400", label: "Normal priority" },
+        LOW:    { flagClass: "text-blue-400", label: "Low priority" },
     }
-    const { classe, icone: Icone, label } = config[priority as keyof typeof config] || config.MEDIUM
+    const { flagClass, label } = config[priority ?? "MEDIUM"] ?? config.MEDIUM
     return (
-        <span className={`badge ${classe} badge-xs sm:badge-sm gap-0.5 sm:gap-1 text-[10px] sm:text-xs`}>
-            <Icone className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
-            <span className="hidden sm:inline">{label}</span>
-        </span>
+        <div className="flex items-center gap-1.5">
+            <Flag className={`w-3 h-3 shrink-0 ${flagClass}`} />
+            <span className={`text-xs font-medium ${flagClass}`}>{label}</span>
+        </div>
+    )
+}
+
+// Format date : "17 mars - 09:00"
+function formatDate(date: string | Date): string {
+    const d = new Date(date)
+    return (
+        d.toLocaleDateString("en-US", { day: "numeric", month: "short" }) +
+        " - " +
+        d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })
     )
 }
 
 export default function KanbanCard({ task, index, email, onDelete }: KanbanCardProps) {
     const canDelete = email === task.createdBy?.email
 
-    // Détermine si la tâche est en retard
-    const estEnRetard =
+    const isOverdue =
         task.dueDate &&
         task.status !== "Done" &&
         new Date(task.dueDate) < new Date()
@@ -56,110 +58,89 @@ export default function KanbanCard({ task, index, email, onDelete }: KanbanCardP
                     ref={provided.innerRef}
                     {...provided.draggableProps}
                     className={`
-                        bg-base-100 border rounded-xl p-2.5 sm:p-3 mb-2.5 shadow-sm
-                        transition-shadow duration-150 overflow-hidden
-                        ${snapshot.isDragging ? "shadow-lg ring-2 ring-primary/40 rotate-1" : ""}
-                        ${estEnRetard ? "border-error/40" : "border-base-300"}
+                        group bg-base-100 rounded-xl border border-base-200 mb-2
+                        shadow-sm transition-all duration-150 overflow-hidden
+                        ${snapshot.isDragging
+                            ? "shadow-xl ring-2 ring-primary/30 rotate-1 scale-[1.02]"
+                            : "hover:shadow-md hover:border-base-300"
+                        }
                     `}
                 >
-                    {/* Zone de drag — seule cette partie est draggable (pas les boutons) */}
-                    <div {...provided.dragHandleProps} className="cursor-grab active:cursor-grabbing">
+                    {/* Zone draggable (tout sauf les boutons d'action) */}
+                    <div {...provided.dragHandleProps} className="p-3 cursor-grab active:cursor-grabbing">
 
-                    {/* Ligne supérieure : priorité + badge retard */}
-                    <div className="flex items-center justify-between gap-1 mb-1.5">
-                        <PriorityBadge priority={task.priority} />
-                        {estEnRetard && (
-                            <span className="badge badge-error badge-xs gap-0.5 text-[9px] whitespace-nowrap">
-                                <AlertCircle className="w-2.5 h-2.5" />
-                                Retard
-                            </span>
-                        )}
-                    </div>
+                        {/* Ligne 1 : Titre + spinner En cours + bouton "..." */}
+                        <div className="flex items-start justify-between gap-2 mb-2.5">
+                            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                                {task.status === "In Progress" && (
+                                    <span className="loading loading-spinner loading-xs text-warning shrink-0 mt-0.5" />
+                                )}
+                                <p className="font-semibold text-sm leading-snug line-clamp-2 text-base-content">
+                                    {task.name}
+                                </p>
+                            </div>
 
-                    {/* Titre de la tâche — tronqué proprement */}
-                    <p className="text-xs sm:text-sm font-semibold leading-snug mb-1.5 line-clamp-2">
-                        {task.name}
-                    </p>
+                            {/* Menu "..." → ouvre le détail */}
+                            <Link
+                                href={`/task-details/${task.id}`}
+                                onClick={(e) => e.stopPropagation()}
+                                className="btn btn-ghost btn-xs btn-circle opacity-0 group-hover:opacity-50 hover:!opacity-100 shrink-0 mt-0.5"
+                                title="Voir les détails"
+                            >
+                                <MoreHorizontal className="w-3.5 h-3.5" />
+                            </Link>
+                        </div>
 
-                    {/* Assigné à — prénom sur mobile, nom complet sur desktop */}
-                    <div className="mb-1.5 overflow-hidden">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                            {task.user?.imageUrl ? (
-                                <img
-                                    src={task.user.imageUrl}
-                                    alt={task.user.name || ""}
-                                    className="w-5 h-5 lg:w-6 lg:h-6 rounded-full shrink-0 object-cover"
-                                />
+                        {/* Ligne 2 : Avatar(s) de l'assigné */}
+                        <div className="flex items-center gap-1 mb-2.5">
+                            {task.user ? (
+                                task.user.imageUrl ? (
+                                    <img
+                                        src={task.user.imageUrl}
+                                        alt={task.user.name || ""}
+                                        className="w-5 h-5 rounded-full object-cover ring-2 ring-base-100"
+                                    />
+                                ) : (
+                                    <div className="w-5 h-5 rounded-full bg-primary/20 text-primary flex items-center justify-center text-[9px] font-bold ring-2 ring-base-100">
+                                        {(task.user.name || "?")[0].toUpperCase()}
+                                    </div>
+                                )
                             ) : (
-                                <div className="w-5 h-5 lg:w-6 lg:h-6 rounded-full bg-primary/20 flex items-center justify-center text-[10px] font-bold shrink-0">
-                                    {(task.user?.name || "?")[0].toUpperCase()}
-                                </div>
+                                <div className="w-5 h-5 rounded-full bg-base-200 ring-2 ring-base-100" />
                             )}
-                            <div className="flex flex-col min-w-0">
-                                {/* Mobile : prénom uniquement */}
-                                <span className="text-[11px] text-base-content/70 truncate min-w-0 lg:hidden">
-                                    {task.user?.name?.split(" ")[0] || "Non assigné"}
+                        </div>
+
+                        {/* Ligne 3 : Date de livraison + badge "En retard" */}
+                        {task.dueDate && (
+                            <div className="flex items-center gap-1.5 mb-2">
+                                <Calendar className="w-3 h-3 shrink-0 text-base-content/40" />
+                                <span className="text-xs text-base-content/50 tabular-nums">
+                                    {formatDate(task.dueDate)}
                                 </span>
-                                {/* Desktop : nom complet */}
-                                <span className="text-xs text-base-content/70 truncate min-w-0 hidden lg:inline">
-                                    {task.user?.name || "Non assigné"}
-                                </span>
-                                {/* Desktop : email */}
-                                {task.user?.email && (
-                                    <span className="text-[10px] text-base-content/40 truncate min-w-0 hidden lg:inline">
-                                        {task.user.email}
+                                {isOverdue && (
+                                    <span className="text-xs text-orange-500 font-semibold">
+                                        Overdue
                                     </span>
                                 )}
                             </div>
-                        </div>
+                        )}
+
+                        {/* Ligne 4 : Priorité avec drapeau coloré */}
+                        <PriorityRow priority={task.priority} />
                     </div>
 
-                    {/* Dates — desktop uniquement (mobile : dans la zone Actions) */}
-                    <div className="hidden lg:flex flex-col gap-0.5 mb-1.5 tabular-nums">
-                        {task.startDate && (
-                            <p className="text-[10px] text-base-content/50">
-                                Début : {new Date(task.startDate).toLocaleDateString("fr-FR")}
-                            </p>
-                        )}
-                        {task.dueDate && (
-                            <p className={`text-[10px] ${estEnRetard ? "text-error font-medium" : "text-base-content/50"}`}>
-                                Livraison : {new Date(task.dueDate).toLocaleDateString("fr-FR")}
-                            </p>
-                        )}
-                    </div>
-
-                    </div>{/* Fin de la zone de drag */}
-
-                    {/* Actions — boutons + dates en mobile */}
-                    <div className="flex items-center gap-1.5">
-                        {/* Dates compactes — mobile uniquement */}
-                        <div className="flex flex-col gap-0.5 tabular-nums lg:hidden mr-auto">
-                            {task.startDate && (
-                                <span className="text-[10px] text-base-content/50">
-                                    {new Date(task.startDate).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })}
-                                </span>
-                            )}
-                            {task.dueDate && (
-                                <span className={`text-[10px] ${estEnRetard ? "text-error font-medium" : "text-base-content/50"}`}>
-                                    {new Date(task.dueDate).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })}
-                                </span>
-                            )}
-                        </div>
-                        <Link
-                            href={`/task-details/${task.id}`}
-                            className="btn btn-primary btn-xs flex-1 text-[11px] sm:text-xs h-7 min-h-0"
-                        >
-                            Détails <ArrowRight className="w-3 h-3" />
-                        </Link>
-                        {canDelete && (
+                    {/* Bouton supprimer — séparé de la zone de drag, visible si autorisé */}
+                    {canDelete && (
+                        <div className="px-3 pb-2.5 flex justify-end">
                             <button
                                 onClick={() => onDelete?.(task.id)}
-                                className="btn btn-ghost btn-xs text-error h-7 min-h-0 px-1.5"
+                                className="btn btn-ghost btn-xs btn-circle opacity-0 group-hover:opacity-40 hover:!opacity-100 hover:text-error"
+                                title="Delete task"
                             >
                                 <Trash className="w-3 h-3" />
                             </button>
-                        )}
-                    </div>
+                        </div>
+                    )}
                 </div>
             )}
         </Draggable>

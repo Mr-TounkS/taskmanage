@@ -1,20 +1,18 @@
 import { IProjectRepository } from '../../../domain/repositories/IProjectRepository';
 import { UserEntity } from '../../../domain/entities/User';
+import { ProjectRole } from '../../../domain/entities/ProjectUser';
 
 export class GetProjectUsersUseCase {
   constructor(private readonly projectRepository: IProjectRepository) {}
 
-  async execute(idProject: string): Promise<UserEntity[]> {
+  async execute(idProject: string): Promise<(UserEntity & { role: ProjectRole })[]> {
     const projectWithUsers = await this.projectRepository.findWithAllUsers(idProject);
 
-    const collaborators = projectWithUsers?.users.map((pu: { user: UserEntity }) => pu.user) ?? [];
-    const creator = projectWithUsers?.createdBy;
+    if (!projectWithUsers) return [];
 
-    const allUsers =
-      creator && !collaborators.some((u) => u.id === creator.id)
-        ? [creator, ...collaborators]
-        : collaborators;
-
-    return allUsers;
+    return projectWithUsers.users.map(pu => ({
+      ...pu.user,
+      role: pu.role
+    }));
   }
 }
