@@ -64,7 +64,7 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
     const fetchProject = async (projectId: string) => {
         try {
             const project = await getProjectInfo(projectId, false)
-            setProject(project)
+            setProject(project as unknown as Project | null)
         } catch (error) {
             toast.error('Erreur lors du chargement du projet !');
         }
@@ -175,7 +175,13 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                                 <div className="badge badge-ghost ml-2">{task?.dueDate?.toLocaleDateString()}</div>
                             </span>
                             <div>
+                                {/* Label visually hidden mais accessible aux lecteurs d'écran */}
+                                {/* Corrige : "Select elements do not have associated label" — Lighthouse Accessibility */}
+                                <label htmlFor="task-status-select" className="sr-only">
+                                    Statut de la tâche
+                                </label>
                                 <select
+                                    id="task-status-select"
                                     value={status}
                                     onChange={handleStatusChange}
                                     disabled={status == "Done" || task.user?.email !== email}

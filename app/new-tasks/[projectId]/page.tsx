@@ -50,7 +50,7 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
     const fetchInfos = async (projectId: string) => {
         try {
             const project = await getProjectInfo(projectId, true)
-            setProject(project)
+            setProject(project as unknown as Project | null)
             const associatedUsers = await getProjectUser(projectId)
             setUsersProject(associatedUsers)
         } catch (error) {
@@ -73,18 +73,18 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
 
     const handleSubmit = async () => {
         if (!name || !projectId || !selectedUser || !description || !dueDate) {
-            toast.error('Veuillez remplir tous les champs obligatoires')
+            toast.error('Please fill in all required fields')
             return
         }
         if (startDate && dueDate && startDate > dueDate) {
-            toast.error('La date de début ne peut pas être après la date de fin')
+            toast.error('Start date cannot be after the due date')
             return
         }
         try {
             await createTask(name, description, priority, startDate, dueDate, projectId, email, selectedUser.email)
             rooter.push(`/project/${projectId}`)
         } catch (error) {
-            toast.error("Une erreur est survenue lors de la création de la tâche." + error);
+            toast.error("An error occurred while creating the task." + error);
         }
     }
 
@@ -93,114 +93,112 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
             <div>
                 <div className="breadcrumbs text-sm">
                     <ul>
-                        <li><Link href={`/project/${projectId}`}>Retour</Link></li>
+                        <li><Link href={`/project/${projectId}`}>Back</Link></li>
                         <li>
                             <div className='badge badge-primary'>{project?.name}</div>
                         </li>
                     </ul>
                 </div>
 
-                <div className='flex flex-col md:flex-row gap-6'>
+                <div className='flex flex-col lg:flex-row gap-5'>
 
-                    {/* ── Colonne gauche ── */}
-                    <div className='w-full md:w-1/4 flex flex-col gap-4'>
+                    {/* ── Colonne gauche (panneau latéral) ── */}
+                    <div className='w-full lg:w-64 xl:w-72 shrink-0 flex flex-col gap-4'>
 
                         {/* Assignation */}
-                        <AssignTask users={usersProject} projectId={projectId} onAssignTask={handleUserSelect} />
-
-                        {/* Priorité */}
-                        <div className='border border-base-300 rounded-xl p-4'>
+                        <div className='border border-base-300 rounded-xl p-4 overflow-hidden'>
                             <p className='text-xs font-semibold text-base-content/60 uppercase tracking-wide mb-3'>
-                                Priorité
+                                Assigned to
                             </p>
-                            <div className='flex flex-col gap-2'>
-                                <button
-                                    type="button"
-                                    onClick={() => setPriority('LOW')}
-                                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-all text-left
-                                        ${priority === 'LOW' ? 'border-success bg-success/10' : 'border-base-300 hover:border-base-400'}`}
-                                >
-                                    <ArrowDown className="w-4 h-4 text-success" />
-                                    <span className="text-success font-semibold">Faible</span>
-                                    {priority === 'LOW' && <span className='ml-auto text-success text-xs'>✓</span>}
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setPriority('MEDIUM')}
-                                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-all text-left
-                                        ${priority === 'MEDIUM' ? 'border-warning bg-warning/10' : 'border-base-300 hover:border-base-400'}`}
-                                >
-                                    <Minus className="w-4 h-4 text-warning" />
-                                    <span className="text-warning font-semibold">Moyenne</span>
-                                    {priority === 'MEDIUM' && <span className='ml-auto text-warning text-xs'>✓</span>}
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setPriority('HIGH')}
-                                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-all text-left
-                                        ${priority === 'HIGH' ? 'border-error bg-error/10' : 'border-base-300 hover:border-base-400'}`}
-                                >
-                                    <AlertTriangle className="w-4 h-4 text-error" />
-                                    <span className="text-error font-semibold">Élevée</span>
-                                    {priority === 'HIGH' && <span className='ml-auto text-error text-xs'>✓</span>}
-                                </button>
-                            </div>
+                            <AssignTask users={usersProject} projectId={projectId} onAssignTask={handleUserSelect} />
                         </div>
 
-                        {/* Dates */}
-                        <div className='border border-base-300 rounded-xl p-4'>
-                            <p className='text-xs font-semibold text-base-content/60 uppercase tracking-wide mb-3'>
-                                Dates
-                            </p>
-                            <div className='flex flex-col gap-3'>
-                                <div>
-                                    <label className='text-xs text-base-content/60 block mb-1'>
-                                        Date de début
-                                    </label>
-                                    <input
-                                        suppressHydrationWarning
-                                        className='input input-bordered input-sm border-base-300 w-full'
-                                        type="date"
-                                        onChange={(e) => setStartDate(e.target.value ? new Date(e.target.value) : null)}
-                                    />
-                                </div>
-                                <div>
-                                    <label className='text-xs text-base-content/60 block mb-1'>
-                                        Date de livraison <span className='text-error'>*</span>
-                                    </label>
-                                    <input
-                                        suppressHydrationWarning
-                                        className='input input-bordered input-sm border-base-300 w-full'
-                                        type="date"
-                                        onChange={(e) => setDueDate(new Date(e.target.value))}
-                                    />
+                        {/* Priorité + Dates côte à côte sur mobile/tablet, empilés sur desktop */}
+                        <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4'>
+
+                            {/* Priorité */}
+                            <div className='border border-base-300 rounded-xl p-4'>
+                                <p className='text-xs font-semibold text-base-content/60 uppercase tracking-wide mb-3'>
+                                    Priority
+                                </p>
+                                <div className='flex flex-col gap-2'>
+                                    {[
+                                        { value: 'LOW'    as TaskPriority, icon: <ArrowDown className="w-4 h-4 text-success" />,    label: 'Low',    color: 'success' },
+                                        { value: 'MEDIUM' as TaskPriority, icon: <Minus className="w-4 h-4 text-warning" />,        label: 'Medium', color: 'warning' },
+                                        { value: 'HIGH'   as TaskPriority, icon: <AlertTriangle className="w-4 h-4 text-error" />,  label: 'High',   color: 'error'   },
+                                    ].map(({ value, icon, label, color }) => (
+                                        <button
+                                            key={value}
+                                            type="button"
+                                            onClick={() => setPriority(value)}
+                                            className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-all text-left
+                                                ${priority === value
+                                                    ? `border-${color} bg-${color}/10`
+                                                    : 'border-base-300 hover:border-base-400'}`}
+                                        >
+                                            {icon}
+                                            <span className={`text-${color} font-semibold`}>{label}</span>
+                                            {priority === value && <span className={`ml-auto text-${color} text-xs`}>✓</span>}
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
-                        </div>
 
+                            {/* Dates */}
+                            <div className='border border-base-300 rounded-xl p-4'>
+                                <p className='text-xs font-semibold text-base-content/60 uppercase tracking-wide mb-3'>
+                                    Dates
+                                </p>
+                                <div className='flex flex-col gap-3'>
+                                    <div>
+                                        <label className='text-xs text-base-content/60 block mb-1'>
+                                            Start date
+                                        </label>
+                                        <input
+                                            suppressHydrationWarning
+                                            className='input input-bordered input-sm border-base-300 w-full'
+                                            type="date"
+                                            onChange={(e) => setStartDate(e.target.value ? new Date(e.target.value) : null)}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className='text-xs text-base-content/60 block mb-1'>
+                                            Due date <span className='text-error'>*</span>
+                                        </label>
+                                        <input
+                                            suppressHydrationWarning
+                                            className='input input-bordered input-sm border-base-300 w-full'
+                                            type="date"
+                                            onChange={(e) => setDueDate(new Date(e.target.value))}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
                     </div>
 
-                    {/* ── Colonne droite ── */}
-                    <div className='w-full md:flex-1 min-w-0 overflow-hidden flex flex-col gap-4'>
+                    {/* ── Colonne droite (formulaire principal) ── */}
+                    <div className='flex-1 min-w-0 flex flex-col gap-4'>
                         <input
                             suppressHydrationWarning
-                            placeholder='Nom de la tâche *'
+                            placeholder='Task name *'
                             className='w-full input input-bordered border border-base-300 font-bold'
                             type="text"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                         />
-                        <div className='w-full max-w-full overflow-hidden'>
+                        <div className='w-full overflow-hidden'>
                             <ReactQuill
-                                placeholder='Décrivez la tâche...'
+                                placeholder='Describe the task...'
                                 value={description}
                                 modules={modules}
                                 onChange={setDescription}
                             />
                         </div>
                         <div className='flex justify-end'>
-                            <button className='btn btn-primary btn-md' onClick={handleSubmit}>
-                                Créer la tâche
+                            <button className='btn btn-primary w-full sm:w-auto' onClick={handleSubmit}>
+                                Create task
                             </button>
                         </div>
                     </div>

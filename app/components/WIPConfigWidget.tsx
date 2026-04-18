@@ -12,9 +12,10 @@
  */
 
 import { useEffect, useState } from "react";
-import { Settings, Save, AlertTriangle } from "lucide-react";
+import { Settings, Save, AlertTriangle, Lock } from "lucide-react";
 import { getWIPConfigs, upsertWIPConfigs } from "@/app/actions";
 import { toast } from "react-toastify";
+import { useUser } from "@clerk/nextjs";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -24,15 +25,17 @@ interface WIPConfigWidgetProps {
   projectId: string;
   /** Nombre de tâches actuellement dans chaque colonne */
   taskCounts: { todo: number; inProgress: number; done: number };
+  /** Rôle de l'utilisateur actuel dans le projet */
+  userRole?: 'PO' | 'MEMBER';
   /** Callback appelé après sauvegarde — pour déclencher le recalcul SGR */
   onSaved?: () => void;
 }
 
 // Colonnes Kanban avec leur clé dans taskCounts
 const COLONNES = [
-  { key: 'To Do',       label: 'À faire',    countKey: 'todo' as const },
-  { key: 'In Progress', label: 'En cours',   countKey: 'inProgress' as const },
-  { key: 'Done',        label: 'Terminé',    countKey: 'done' as const },
+  { key: 'To Do', label: 'To Do', countKey: 'todo' as const },
+  { key: 'In Progress', label: 'In Progress', countKey: 'inProgress' as const },
+  { key: 'Done', label: 'Done', countKey: 'done' as const },
 ];
 
 // ---------------------------------------------------------------------------
@@ -42,8 +45,13 @@ const COLONNES = [
 export default function WIPConfigWidget({
   projectId,
   taskCounts,
+  userRole = 'MEMBER',
   onSaved,
 }: WIPConfigWidgetProps) {
+  const { user } = useUser();
+  const email = user?.primaryEmailAddress?.emailAddress;
+  const isPO = userRole === 'PO';
+
   // Limites WIP saisies par l'utilisateur (0 = pas de limite)
   const [limites, setLimites] = useState<Record<string, number>>({
     'To Do': 0,
@@ -66,18 +74,23 @@ export default function WIPConfigWidget({
   }, [projectId]);
 
   const handleSave = async () => {
+    if (!isPO || !email) {
+      toast.error("Action not authorized");
+      return;
+    }
+
     setSauvegarde(true);
     try {
       const configs = COLONNES.map((col) => ({
         column: col.key,
         wipLimit: limites[col.key] ?? 0,
       }));
-      await upsertWIPConfigs(projectId, configs);
-      toast.success('Limites WIP sauvegardées !');
+      await upsertWIPConfigs(projectId, configs, email);
+      toast.success('WIP limits saved!');
       setOuvert(false);
       onSaved?.();
-    } catch {
-      toast.error('Erreur lors de la sauvegarde des limites WIP');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Error while saving');
     } finally {
       setSauvegarde(false);
     }
@@ -94,14 +107,19 @@ export default function WIPConfigWidget({
     <div className="p-5 border border-base-300 rounded-xl mb-6">
       {/* En-tête */}
       <div className="flex items-center justify-between mb-3">
-        <h3 className="font-semibold text-sm">Limites WIP</h3>
-        <button
-          onClick={() => setOuvert((o) => !o)}
-          className="btn btn-ghost btn-xs"
-          title="Configurer les limites WIP"
-        >
-          <Settings className="w-3 h-3" />
-        </button>
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold text-sm">WIP Limits</h3>
+          {!isPO && <Lock className="w-3 h-3 text-base-content/30" />}
+        </div>
+        {isPO && (
+          <button
+            onClick={() => setOuvert((o) => !o)}
+            className="btn btn-ghost btn-xs"
+            title="Configure WIP limits"
+          >
+            <Settings className="w-3 h-3" />
+          </button>
+        )}
       </div>
 
       {/* Résumé — toujours visible */}
@@ -139,8 +157,8 @@ export default function WIPConfigWidget({
       {ouvert && (
         <div className="mt-4 pt-4 border-t border-base-300">
           <p className="text-xs text-base-content/50 mb-3">
-            Définissez le nombre max de tâches par colonne.<br />
-            <span className="font-medium">0 = pas de limite.</span>
+            Set the max number of tasks per column.<br />
+            <span className="font-medium">0 = no limit.</span>
           </p>
 
           <div className="space-y-3">
@@ -180,7 +198,7 @@ export default function WIPConfigWidget({
             ) : (
               <Save className="w-3 h-3" />
             )}
-            Sauvegarder
+            Save
           </button>
         </div>
       )}

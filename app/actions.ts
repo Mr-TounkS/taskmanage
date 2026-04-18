@@ -56,8 +56,8 @@ export async function createProject(name: string, description: string, email: st
     try {
         return await new CreateProjectUseCase(userRepo, projectRepo).execute(name, description, email);
     } catch (error) {
-        console.error(error);
-        throw new Error();
+        console.error('[createProject Action Error]', error);
+        throw error;
     }
 }
 
@@ -66,8 +66,8 @@ export async function getProjectsCreatedByUser(email: string) {
     try {
         return await new GetProjectsCreatedByUserUseCase(projectRepo).execute(email);
     } catch (error) {
-        console.error(error);
-        throw new Error();
+        console.error('[getProjectsCreatedByUser Error]', error);
+        throw error;
     }
 }
 
@@ -76,8 +76,8 @@ export async function deleteProjectById(projectId: string) {
     try {
         return await new DeleteProjectUseCase(projectRepo).execute(projectId);
     } catch (error) {
-        console.error(error);
-        throw new Error();
+        console.error('[deleteProjectById Error]', error);
+        throw error;
     }
 }
 
@@ -86,8 +86,8 @@ export async function addUserToProject(email: string, inviteCode: string) {
     try {
         return await new AddUserToProjectUseCase(userRepo, projectRepo).execute(email, inviteCode);
     } catch (error) {
-        console.error(error);
-        throw new Error();
+        console.error('[addUserToProject Error]', error);
+        throw error;
     }
 }
 
@@ -96,8 +96,8 @@ export async function getProjectsAssociatedWithUser(email: string) {
     try {
         return await new GetProjectsAssociatedWithUserUseCase(projectRepo).execute(email);
     } catch (error) {
-        console.error(error);
-        throw new Error();
+        console.error('[getProjectsAssociatedWithUser Error]', error);
+        throw error;
     }
 }
 
@@ -106,8 +106,8 @@ export async function getProjectInfo(idProject: string, details: boolean) {
     try {
         return await new GetProjectInfoUseCase(projectRepo).execute(idProject, details);
     } catch (error) {
-        console.error(error);
-        throw new Error();
+        console.error('[getProjectInfo Error]', error);
+        throw error;
     }
 }
 
@@ -116,8 +116,8 @@ export async function getProjectUser(idProject: string) {
     try {
         return await new GetProjectUsersUseCase(projectRepo).execute(idProject);
     } catch (error) {
-        console.error(error);
-        throw new Error();
+        console.error('[getProjectUser Error]', error);
+        throw error;
     }
 }
 
@@ -148,8 +148,8 @@ export async function deleteTaskById(taskId: string) {
     try {
         return await new DeleteTaskUseCase(taskRepo).execute(taskId);
     } catch (error) {
-        console.error(error);
-        throw new Error();
+        console.error('[deleteTaskById Error]', error);
+        throw error;
     }
 }
 
@@ -158,8 +158,8 @@ export const getTakDetails = async (taskId: string) => {
     try {
         return await new GetTaskDetailsUseCase(taskRepo).execute(taskId);
     } catch (error) {
-        console.error(error);
-        throw new Error();
+        console.error('[getTakDetails Error]', error);
+        throw error;
     }
 };
 
@@ -206,7 +206,7 @@ async function notifyProjectMembersPush(
                 user: {
                     OR: [
                         { userProjects: { some: { projectId } } },
-                        { projects: { some: { id: projectId } } },
+                        { createdProjects: { some: { id: projectId } } },
                     ],
                 },
             },
@@ -252,20 +252,36 @@ export async function getWIPConfigs(projectId: string) {
 /**
  * Sauvegarde les limites WIP pour les 3 colonnes Kanban d'un projet.
  * Une limite à 0 signifie "pas de limite".
+ * Vérifie que l'utilisateur est bien le Product Owner (PO) du projet.
  */
 export async function upsertWIPConfigs(
     projectId: string,
-    configs: { column: string; wipLimit: number }[]
+    configs: { column: string; wipLimit: number }[],
+    userEmail: string // Email de l'utilisateur effectuant l'action
 ) {
-    const { columnWIPConfigRepo } = makeRepos();
+    const { columnWIPConfigRepo, projectRepo, userRepo } = makeRepos();
     try {
+        // 1. Récupérer l'utilisateur
+        const user = await userRepo.findByEmail(userEmail);
+        if (!user) throw new Error("Utilisateur non trouvé");
+
+        // 2. Vérifier le rôle dans le projet
+        const projectWithUsers = await projectRepo.findWithAllUsers(projectId);
+        if (!projectWithUsers) throw new Error("Projet non trouvé");
+
+        const userRole = projectWithUsers.users.find(u => u.user.id === user.id)?.role;
+        if (userRole !== 'PO') {
+            throw new Error("Action non autorisée : Seul le Product Owner peut modifier les limites WIP.");
+        }
+
+        // 3. Exécuter la mise à jour
         return await new UpsertWIPConfigUseCase(columnWIPConfigRepo).execute({
             projectId,
             configs: configs as { column: 'To Do' | 'In Progress' | 'Done'; wipLimit: number }[],
         });
     } catch (error) {
-        console.error('[WIP Error]', error);
-        throw new Error(`Erreur lors de la sauvegarde des configs WIP: ${error instanceof Error ? error.message : String(error)}`);
+        console.error('[WIP Auth Error]', error);
+        throw new Error(error instanceof Error ? error.message : "Erreur de sécurité lors de la sauvegarde");
     }
 }
 
@@ -305,6 +321,6 @@ export const updateTaskStatus = async (
         return await new UpdateTaskStatusUseCase(taskRepo).execute(taskId, newStatus, solutionDescription);
     } catch (error) {
         console.error('[UpdateStatus Error]', error);
-        throw new Error(`Erreur lors du changement de status: ${error instanceof Error ? error.message : String(error)}`);
+        throw error;
     }
 };

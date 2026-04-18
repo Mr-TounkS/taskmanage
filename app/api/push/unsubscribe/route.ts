@@ -1,8 +1,8 @@
 /**
  * DELETE /api/push/unsubscribe
- * Supprime l'abonnement push d'un utilisateur (désactivation manuelle ou expiration).
+ * Supprime le token FCM Firebase d'un utilisateur.
  *
- * Corps attendu : { endpoint: string }
+ * Corps attendu : { token: string }
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -10,18 +10,19 @@ import prisma from "@/lib/prisma";
 
 export async function DELETE(req: NextRequest) {
   try {
-    const body = await req.json() as { endpoint?: string };
-    const { endpoint } = body;
+    const body = await req.json() as { token?: string };
+    const { token } = body;
 
-    if (!endpoint) {
-      return NextResponse.json({ error: "endpoint requis" }, { status: 400 });
+    if (!token) {
+      return NextResponse.json({ error: "token requis" }, { status: 400 });
     }
 
-    await prisma.pushSubscription.deleteMany({ where: { endpoint } });
+    // Le token FCM est stocké dans le champ endpoint
+    await prisma.pushSubscription.deleteMany({ where: { endpoint: token } });
 
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (error) {
-    console.error("[Push Unsubscribe] Erreur :", error);
+    console.error("[FCM Unsubscribe] Erreur :", error);
     return NextResponse.json({ error: "Erreur interne" }, { status: 500 });
   }
 }

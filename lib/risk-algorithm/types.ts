@@ -21,6 +21,13 @@ export interface SGRColumnConfig {
   wipLimit: number; // 0 = pas de limite
 }
 
+/** Données d'activité de développement issues de GitHub (optionnel) */
+export interface SGRGitHubActivity {
+  prOpen: number;          // Nombre de pull requests ouvertes
+  prDelayDays: number;     // Temps moyen de review en jours
+  prStuck: number;         // Nombre de PR bloquées (> 3 jours sans activité)
+}
+
 /** Données de dette technique issues de SonarQube (optionnel) */
 export interface SGRTechDebt {
   bugsBloquants: number;       // Bugs de sévérité "blocker" ou "critical"
@@ -32,8 +39,9 @@ export interface SGRTechDebt {
 export interface SGRInput {
   tasks: SGRTask[];
   columnConfigs: SGRColumnConfig[];
-  techDebt?: SGRTechDebt; // Absent si SonarQube non intégré
-  dateReference?: Date;   // Par défaut : Date.now() — utile pour les tests
+  githubActivity?: SGRGitHubActivity; // Activité de développement
+  techDebt?: SGRTechDebt;            // Absent si SonarQube non intégré
+  dateReference?: Date;              // Par défaut : Date.now() — utile pour les tests
 }
 
 // ---------------------------------------------------------------------------
@@ -58,12 +66,19 @@ export interface SGRResult {
   sgr: number;
   /** Niveau de risque interprété */
   niveau: 'faible' | 'modéré' | 'élevé' | 'critique';
+  /** Sous-scores (dimensions du risque) */
+  dimensions: {
+    flow: number;     // R_flow
+    dev: number;      // R_dev
+    quality: number;  // R_quality
+  };
   /** Détail de chaque indicateur */
   indicateurs: {
     wip: SGRIndicator;
     cycleTime: SGRIndicator;
     age: SGRIndicator;
     throughput: SGRIndicator;
+    github?: SGRIndicator;
     tech: SGRIndicator;
   };
   /** Avertissements lisibles pour l'interface */
@@ -71,15 +86,36 @@ export interface SGRResult {
 }
 
 // ---------------------------------------------------------------------------
-// Constantes de pondération
+// Constantes de pondération (Pondération λ du Score Global)
 // ---------------------------------------------------------------------------
 
 export const POIDS_SGR = {
-  WIP: 0.30,
-  CYCLE_TIME: 0.25,
-  AGE: 0.20,
-  THROUGHPUT: 0.15,
-  TECH: 0.10,
+  // Dimension Flow (λ1)
+  FLOW: 0.50,
+  // Dimension Dev (λ2)
+  DEV: 0.30,
+  // Dimension Quality (λ3)
+  QUALITY: 0.20,
+} as const;
+
+/** Pondérations internes des sous-scores (α, β, γ) */
+export const POIDS_INTERNES = {
+  FLOW: {
+    WIP: 0.40,
+    CT: 0.30,
+    AGE: 0.20,
+    THROUGHPUT: 0.10,
+  },
+  DEV: {
+    PR_OPEN: 0.40,
+    PR_DELAY: 0.30,
+    PR_STUCK: 0.30,
+  },
+  QUALITY: {
+    BUGS: 0.50,
+    DEBT: 0.30,
+    SMELLS: 0.20,
+  },
 } as const;
 
 /** Seuils de classification du SGR */
@@ -87,6 +123,16 @@ export const SEUILS_SGR = {
   FAIBLE: 30,
   MODERE: 60,
   ELEVE: 80,
+} as const;
+
+/** Valeurs critiques pour la normalisation (Seuils X_seuil) */
+export const VALEURS_CRITIQUES = {
+  PR_OPEN: 10,       // PR ouvertes
+  PR_DELAY_DAYS: 3,  // Jours de review
+  PR_STUCK: 5,       // PR bloquées
+  BUGS_CRIT: 5,      // Bugs critiques
+  DEBT_DAYS: 5,      // Dette technique en jours
+  SMELLS: 50,        // Code smells
 } as const;
 
 /** Percentile utilisé pour le Service Level Expectation (SLE) */

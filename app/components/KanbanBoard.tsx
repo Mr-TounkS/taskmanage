@@ -24,7 +24,7 @@ import { Task } from "@/app/type"
 import KanbanCard from "./KanbanCard"
 import { updateTaskStatus } from "@/app/actions"
 import { toast } from "react-toastify"
-import { ListTodo, Loader, CircleCheckBig, WifiOff } from "lucide-react"
+import { CircleCheckBig, MoreHorizontal, Plus, WifiOff } from "lucide-react"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { useOfflineQueue } from "@/hooks/useOfflineQueue"
 
@@ -48,29 +48,22 @@ interface KanbanBoardProps {
     onTaskMoved: () => void
 }
 
+// Icône de statut de colonne — cercle coloré comme dans la capture
+function StatusDot({ status }: { status: string }) {
+    if (status === "To Do") {
+        return <div className="w-3.5 h-3.5 rounded-full border-2 border-gray-400 bg-transparent shrink-0" />
+    }
+    if (status === "In Progress") {
+        return <div className="w-3.5 h-3.5 rounded-full bg-yellow-400 shrink-0" />
+    }
+    return <CircleCheckBig className="w-3.5 h-3.5 text-green-500 fill-green-100 shrink-0" />
+}
+
 // Configuration des colonnes Kanban
 const COLONNES = [
-    {
-        id: "To Do",
-        label: "À faire",
-        icon: ListTodo,
-        couleurHeader: "bg-red-50 border-red-200",
-        couleurBadge: "badge-error",
-    },
-    {
-        id: "In Progress",
-        label: "En cours",
-        icon: Loader,
-        couleurHeader: "bg-yellow-50 border-yellow-200",
-        couleurBadge: "badge-warning",
-    },
-    {
-        id: "Done",
-        label: "Terminé",
-        icon: CircleCheckBig,
-        couleurHeader: "bg-green-50 border-green-200",
-        couleurBadge: "badge-success",
-    },
+    { id: "To Do",       label: "To Do",       couleurBg: "bg-gray-50 dark:bg-base-200/60" },
+    { id: "In Progress", label: "In Progress", couleurBg: "bg-yellow-50/60 dark:bg-base-200/60" },
+    { id: "Done",        label: "Done",         couleurBg: "bg-green-50/60 dark:bg-base-200/60" },
 ] as const
 
 const modules = {
@@ -93,6 +86,8 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
     const [solution, setSolution] = useState("")
     const [enCours, setEnCours] = useState(false)
     const modalRef = useRef<HTMLDialogElement>(null)
+    // Colonne active sur mobile (une colonne affichée à la fois)
+    const [mobileCol, setMobileCol] = useState<string>("To Do")
 
     // Détection de la connexion et file d'attente offline
     const isOnline = useOnlineStatus()
@@ -132,7 +127,7 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
         // Vérification d'autorisation : seul l'assigné peut déplacer sa tâche
         const tache = localTasks.find((t) => t.id === draggableId)
         if (tache?.user?.email !== email) {
-            toast.error("Vous ne pouvez déplacer que les tâches qui vous sont assignées")
+            toast.error("You can only move tasks assigned to you")
             return
         }
 
@@ -160,7 +155,7 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
                 payload: { status: nouveauStatut },
             })
             if (result.queued) {
-                toast.info(`Déplacé vers "${labelColonne}" — synchronisation à la reconnexion`)
+                toast.info(`Moved to "${labelColonne}" — will sync when back online`)
             }
             return
         }
@@ -169,11 +164,11 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
         try {
             await updateTaskStatus(draggableId, nouveauStatut)
             onTaskMoved()
-            toast.success(`Tâche déplacée vers "${labelColonne}"`)
+            toast.success(`Task moved to "${labelColonne}"`)
         } catch {
             // Rollback de la mise à jour optimiste en cas d'erreur
             applyOptimisticMove(draggableId, source.droppableId)
-            toast.error("Impossible de déplacer la tâche")
+            toast.error("Failed to move task")
         }
     }
 
@@ -186,7 +181,7 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
 
         const solutionNettoyee = solution.replace(/<[^>]*>/g, "").trim()
         if (!solutionNettoyee) {
-            toast.error("Il manque une solution")
+            toast.error("A solution is required")
             return
         }
 
@@ -205,7 +200,7 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
             setPendingTaskId(null)
             setSolution("")
             setEnCours(false)
-            toast.info("Tâche marquée terminée — synchronisation à la reconnexion")
+            toast.info("Task marked as done — will sync when back online")
             return
         }
 
@@ -215,9 +210,9 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
             setPendingTaskId(null)
             setSolution("")
             onTaskMoved()
-            toast.success("Tâche clôturée !")
+            toast.success("Task closed!")
         } catch {
-            toast.error("Erreur lors de la clôture de la tâche")
+            toast.error("Error closing the task")
         } finally {
             setEnCours(false)
         }
@@ -240,35 +235,70 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
                 <div className="flex items-center gap-2 text-xs text-warning bg-warning/10 border border-warning/30 rounded-lg px-3 py-2 mb-3">
                     <WifiOff size={14} />
                     <span>
-                        Vous êtes hors ligne. Les déplacements de tâches seront synchronisés
-                        automatiquement dès la reprise de connexion.
+                        You are offline. Task moves will be synced automatically when back online.
                     </span>
                 </div>
             )}
 
             <DragDropContext onDragEnd={handleDragEnd}>
-                {/* Scroll horizontal sur mobile, grille 3 colonnes sur desktop */}
-                <div className="flex gap-3 overflow-x-auto pb-3 snap-x snap-mandatory lg:grid lg:grid-cols-3 lg:overflow-x-visible lg:snap-none">
+                {/* Sélecteur de colonne — visible uniquement sur mobile */}
+                <div className="flex lg:hidden gap-1 mb-3 bg-base-200/50 rounded-xl p-1">
+                    {COLONNES.map((col) => (
+                        <button
+                            key={col.id}
+                            onClick={() => setMobileCol(col.id)}
+                            className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-xs font-medium transition-all
+                                ${mobileCol === col.id
+                                    ? "bg-base-100 shadow-sm text-base-content"
+                                    : "text-base-content/50 hover:text-base-content/70"
+                                }`}
+                        >
+                            <StatusDot status={col.id} />
+                            <span className="truncate">{col.label}</span>
+                            <span className="text-[10px] opacity-60">({tachesPar(col.id).length})</span>
+                        </button>
+                    ))}
+                </div>
+
+                {/* Colonnes : une seule visible sur mobile, grille sur desktop */}
+                <div className="lg:grid lg:grid-cols-3 lg:gap-3">
                     {COLONNES.map((colonne) => {
                         const taches = tachesPar(colonne.id)
-                        const Icone = colonne.icon
 
                         return (
                             <div
                                 key={colonne.id}
-                                className="flex flex-col rounded-xl border border-base-300 overflow-hidden min-w-[260px] w-[78vw] sm:w-[55vw] md:w-[45vw] lg:min-w-0 lg:w-auto shrink-0 lg:shrink snap-center"
+                                className={`
+                                    flex flex-col rounded-xl overflow-hidden mb-3 lg:mb-0
+                                    ${colonne.couleurBg}
+                                    ${mobileCol !== colonne.id ? "hidden lg:flex" : "flex"}
+                                `}
                             >
                                 {/* En-tête de colonne */}
-                                <div
-                                    className={`flex items-center justify-between px-4 py-3 border-b ${colonne.couleurHeader}`}
-                                >
+                                <div className="flex items-center justify-between px-3 py-2.5">
                                     <div className="flex items-center gap-2">
-                                        <Icone className="w-4 h-4" />
-                                        <span className="font-semibold text-sm">{colonne.label}</span>
+                                        <StatusDot status={colonne.id} />
+                                        <span className="font-medium text-sm text-base-content/80">
+                                            {colonne.label}
+                                        </span>
+                                        <span className="text-xs text-base-content/40 font-medium">
+                                            {taches.length}
+                                        </span>
                                     </div>
-                                    <span className={`badge badge-sm ${colonne.couleurBadge}`}>
-                                        {taches.length}
-                                    </span>
+                                    <div className="flex items-center gap-0.5">
+                                        <button
+                                            className="btn btn-ghost btn-xs btn-circle opacity-40 hover:opacity-100"
+                                            title="Options"
+                                        >
+                                            <MoreHorizontal className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                            className="btn btn-ghost btn-xs btn-circle opacity-40 hover:opacity-100"
+                                            title="Add a task"
+                                        >
+                                            <Plus className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
                                 </div>
 
                                 {/* Zone de dépôt */}
@@ -278,25 +308,24 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
                                             ref={provided.innerRef}
                                             {...provided.droppableProps}
                                             className={`
-                                                flex-1 min-h-[200px] p-3 transition-colors duration-150
-                                                ${snapshot.isDraggingOver ? "bg-primary/5" : ""}
+                                                flex-1 min-h-[200px] px-2 pb-2 transition-colors duration-150
+                                                ${snapshot.isDraggingOver ? "bg-primary/5 rounded-b-xl" : ""}
                                             `}
                                         >
-                                            {taches.length === 0 ? (
-                                                <div className="flex items-center justify-center h-full text-base-content/30 text-xs py-8">
-                                                    Déposez une tâche ici
+                                            {taches.length === 0 && (
+                                                <div className="flex items-center justify-center text-base-content/25 text-xs py-10 select-none">
+                                                    Drop a task here
                                                 </div>
-                                            ) : (
-                                                taches.map((task, index) => (
-                                                    <KanbanCard
-                                                        key={task.id}
-                                                        task={task}
-                                                        index={index}
-                                                        email={email}
-                                                        onDelete={onDelete}
-                                                    />
-                                                ))
                                             )}
+                                            {taches.map((task, index) => (
+                                                <KanbanCard
+                                                    key={task.id}
+                                                    task={task}
+                                                    index={index}
+                                                    email={email}
+                                                    onDelete={onDelete}
+                                                />
+                                            ))}
                                             {provided.placeholder}
                                         </div>
                                     )}
@@ -304,7 +333,7 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
                             </div>
                         )
                     })}
-                </div>
+                </div> {/* fin grille colonnes */}
             </DragDropContext>
 
             {/* Modal de clôture — solution obligatoire pour passer en "Done" */}
@@ -316,19 +345,19 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
                     >
                         ✕
                     </button>
-                    <h3 className="font-bold text-lg">C&apos;est quoi la solution ?</h3>
+                    <h3 className="font-bold text-lg">What is the solution?</h3>
                     <p className="py-3 text-base-content/60 text-sm">
-                        Décrivez ce que vous avez fait exactement pour clôturer cette tâche.
+                        Describe exactly what you did to close this task.
                     </p>
                     <ReactQuill
-                        placeholder="Décrivez la solution..."
+                        placeholder="Describe the solution..."
                         value={solution}
                         modules={modules}
                         onChange={setSolution}
                     />
                     <div className="flex gap-2 mt-4">
                         <button onClick={annuler} className="btn btn-ghost btn-sm flex-1">
-                            Annuler
+                            Cancel
                         </button>
                         <button
                             onClick={confirmerCloture}
@@ -338,7 +367,7 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
                             {enCours ? (
                                 <span className="loading loading-spinner loading-xs" />
                             ) : (
-                                "Terminer"
+                                "Complete"
                             )}
                         </button>
                     </div>

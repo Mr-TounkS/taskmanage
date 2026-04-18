@@ -1,5 +1,6 @@
 import { UserEntity } from './User';
 import { TaskEntity } from './Task';
+import { ProjectUserEntity } from './ProjectUser';
 
 export interface ProjectEntity {
   id: string;
@@ -10,6 +11,6 @@ export interface ProjectEntity {
   inviteCode: string;
   createdById: string;
   tasks?: TaskEntity[];
-  users?: UserEntity[];
+  users?: ProjectUserEntity[];
   createdBy?: UserEntity;
 }

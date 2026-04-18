@@ -15,8 +15,9 @@ const UserInfo: FC<UserInfoProps> = ({ role, email, name, imageUrl }) => {
         : "?";
 
     return (
-        <div className="flex items-center">
-            <div className="avatar">
+        <div className="flex items-center gap-3 min-w-0 w-full">
+            {/* Avatar — taille fixe, ne rétrécit jamais */}
+            <div className="avatar shrink-0">
                 <div className="w-9 rounded-full ring ring-primary ring-offset-base-100 ring-offset-2">
                     {imageUrl ? (
                         <Image
@@ -34,10 +35,11 @@ const UserInfo: FC<UserInfoProps> = ({ role, email, name, imageUrl }) => {
                     )}
                 </div>
             </div>
-            <div className="flex flex-col ml-4">
+            {/* Texte — min-w-0 requis pour que truncate fonctionne dans un flex */}
+            <div className="flex flex-col min-w-0 flex-1">
                 <span className="text-xs text-gray-400">{role}</span>
-                <span className="text-sm">{email || ""}</span>
-                <span className="text-sm italic font-bold">{name || ""}</span>
+                <span className="text-sm truncate" title={email || ""}>{email || ""}</span>
+                <span className="text-sm italic font-bold truncate">{name || ""}</span>
             </div>
         </div>
     )

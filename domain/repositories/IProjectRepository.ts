@@ -1,15 +1,16 @@
 import { UserEntity } from '../entities/User';
 import { ProjectEntity } from '../entities/Project';
 import { TaskEntity } from '../entities/Task';
+import { ProjectRole } from '../entities/ProjectUser';
 
-export interface ProjectWithFlatUsers extends ProjectEntity {
+export interface ProjectWithFlatUsers extends Omit<ProjectEntity, 'users'> {
   tasks: TaskEntity[];
-  users: UserEntity[];
+  users: (UserEntity & { role: ProjectRole })[];
 }
 
-export interface ProjectWithDetails extends ProjectEntity {
+export interface ProjectWithDetails extends Omit<ProjectEntity, 'users'> {
   tasks: TaskEntity[];
-  users: UserEntity[];
+  users: (UserEntity & { role: ProjectRole })[];
   createdBy: UserEntity;
 }
 
@@ -21,10 +22,10 @@ export interface IProjectRepository {
   findManyCreatedByUser(email: string): Promise<ProjectWithFlatUsers[]>;
   findManyAssociatedWithUser(email: string): Promise<ProjectWithFlatUsers[]>;
   findWithAllUsers(projectId: string): Promise<(Omit<ProjectEntity, 'users'> & {
-    users: { user: UserEntity }[];
+    users: { user: UserEntity; role: ProjectRole }[];
     createdBy: UserEntity;
   }) | null>;
   delete(projectId: string): Promise<void>;
-  addUser(userId: string, projectId: string): Promise<void>;
+  addUser(userId: string, projectId: string, role?: ProjectRole): Promise<void>;
   isUserAlreadyMember(userId: string, projectId: string): Promise<boolean>;
 }

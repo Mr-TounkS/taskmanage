@@ -51,3 +51,5 @@ node_modules
 /public/sw.js
 /public/swe-worker-5c72df51bb1f6ee0.js
 /public/workbox-f1770938.js
+# clerk configuration (can include secrets)
+/.clerk/
