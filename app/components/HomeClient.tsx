@@ -80,7 +80,7 @@ export default function HomeClient({ email }: HomeClientProps) {
     try {
       await deleteProjectById(projectId);
       fetchProjects(email);
-      toast.success("Projet supprimé !");
+      toast.success("Project deleted!");
     } catch (error) {
       throw new Error("Error deleting project: " + error);
     }
@@ -94,7 +94,7 @@ export default function HomeClient({ email }: HomeClientProps) {
       setName("");
       setDescription("");
       fetchProjects(email);
-      toast.success("Projet créé");
+      toast.success("Project created!");
     } catch (error) {
       console.error("Error creating project:", error);
     }
@@ -109,7 +109,7 @@ export default function HomeClient({ email }: HomeClientProps) {
           (document.getElementById("my_modal_3") as HTMLDialogElement).showModal()
         }
       >
-        Nouveau projet <FolderGit2 />
+        New project <FolderGit2 />
       </button>
 
       {/* Modal de création de projet */}
@@ -118,11 +118,11 @@ export default function HomeClient({ email }: HomeClientProps) {
           <form method="dialog">
             <button className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
           </form>
-          <h3 className="font-bold text-lg">Nouveau Projet</h3>
-          <p className="py-4">Décrivez votre projet simplement grâce à la description</p>
+          <h3 className="font-bold text-lg">New Project</h3>
+          <p className="py-4">Describe your project using the description field</p>
           <div>
             <input
-              placeholder="Nom du projet"
+              placeholder="Project name"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -137,7 +137,7 @@ export default function HomeClient({ email }: HomeClientProps) {
               className="mb-2 textarea textarea-bordered border border-base-300 w-full resize-none textarea-md placeholder::text-sm"
             ></textarea>
             <button className="btn btn-primary" onClick={handleSubmit}>
-              Nouveau projet <FolderGit2 />
+              New project <FolderGit2 />
             </button>
           </div>
         </div>
@@ -147,7 +147,7 @@ export default function HomeClient({ email }: HomeClientProps) {
       {fromCache && !isOnline && (
         <div className="flex items-center gap-2 text-xs text-base-content/50 mb-4 bg-base-200 rounded-lg px-3 py-2">
           <span>📦</span>
-          <span>Données hors ligne — dernière synchronisation depuis votre session précédente</span>
+          <span>Offline data — last sync from your previous session</span>
         </div>
       )}
 
@@ -176,8 +176,8 @@ export default function HomeClient({ email }: HomeClientProps) {
             imageAlt="Picture of an empty project"
             message={
               isOnline
-                ? "Aucun projet créé"
-                : "Aucune donnée en cache — visitez vos projets en ligne d'abord"
+                ? "No projects created"
+                : "No cached data — visit your projects online first"
             }
           />
         )}

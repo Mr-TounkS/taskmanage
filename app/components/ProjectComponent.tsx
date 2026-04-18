@@ -14,7 +14,7 @@ interface ProjectProps {
 const ProjectComponent: FC<ProjectProps> = ({ project, admin, style, onDelete }) => {
 
     const handleDeleteClick = () => {
-        const isConfirmed = window.confirm('Etes-vous sur de vouloir supprimer ce projet ?')
+        const isConfirmed = window.confirm('Are you sure you want to delete this project?')
         if (isConfirmed && onDelete) {
             onDelete(project.id)
         }
@@ -42,11 +42,11 @@ const ProjectComponent: FC<ProjectProps> = ({ project, admin, style, onDelete })
         try {
             if (project.inviteCode) {
                 await navigator.clipboard.writeText(project.inviteCode)
-                toast.success("Code d'invitation copie.")
+                toast.success("Invitation code copied.")
             }
 
         } catch (error) {
-            toast.error("Erreur lors de la copie du code d'invitation.")
+            toast.error("Error copying invitation code.")
         }
     }
 
@@ -69,7 +69,7 @@ const ProjectComponent: FC<ProjectProps> = ({ project, admin, style, onDelete })
             )}
 
             <div className={`mb-3`}>
-                <span>Collaborateurs</span>
+                <span>Collaborators</span>
                 <div className="badge badge-sm badge-ghost ml-1">{project.users?.length}</div>
             </div>
 
@@ -87,7 +87,7 @@ const ProjectComponent: FC<ProjectProps> = ({ project, admin, style, onDelete })
 
             <div className="flex flex-col mb-3">
                 <h2 className={`text-grey-500 mb-2 ${textSizeClass}`}>
-                    <span className="font-bold">A faire</span>
+                    <span className="font-bold">To Do</span>
                     <div className="badge badge-ghost badge-sm ml-1">
                         {taskByStatus.toDo}
                     </div>
@@ -103,7 +103,7 @@ const ProjectComponent: FC<ProjectProps> = ({ project, admin, style, onDelete })
 
             <div className="flex flex-col mb-3">
                 <h2 className={`text-grey-500 mb-2 ${textSizeClass}`}>
-                    <span className="font-bold">En cours</span>
+                    <span className="font-bold">In Progress</span>
                     <div className="badge badge-ghost badge-sm ml-1">
                         {taskByStatus.inProgress}
                     </div>
@@ -119,7 +119,7 @@ const ProjectComponent: FC<ProjectProps> = ({ project, admin, style, onDelete })
 
             <div className="flex flex-col mb-3">
                 <h2 className={`text-grey-500 mb-2 ${textSizeClass}`}>
-                    <span className="font-bold">Terminée(s)</span>
+                    <span className="font-bold">Done</span>
                     <div className="badge badge-ghost badge-sm ml-1">
                         {taskByStatus.done}
                     </div>
@@ -140,7 +140,7 @@ const ProjectComponent: FC<ProjectProps> = ({ project, admin, style, onDelete })
                         <div className="badge badge-sm">
                             {totalTasks}
                         </div>
-                        Tâche
+                        Tasks
                         <ExternalLink className="w-4" />
                     </Link>
                 )}
