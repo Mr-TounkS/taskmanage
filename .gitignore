@@ -53,3 +53,10 @@ node_modules
 /public/workbox-f1770938.js
 # clerk configuration (can include secrets)
 /.clerk/
+
+# Claude Code configuration (local dev tooling only)
+.claude/
+CLAUDE.md
+.agents/
+.windsurf/
+skills-lock.json
