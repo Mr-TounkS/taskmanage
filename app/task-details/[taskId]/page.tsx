@@ -64,7 +64,7 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
     const fetchProject = async (projectId: string) => {
         try {
             const project = await getProjectInfo(projectId, false)
-            setProject(project)
+            setProject(project as unknown as Project | null)
         } catch (error) {
             toast.error('Erreur lors du chargement du projet !');
         }

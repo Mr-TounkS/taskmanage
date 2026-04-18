@@ -50,7 +50,7 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
     const fetchInfos = async (projectId: string) => {
         try {
             const project = await getProjectInfo(projectId, true)
-            setProject(project)
+            setProject(project as unknown as Project | null)
             const associatedUsers = await getProjectUser(projectId)
             setUsersProject(associatedUsers)
         } catch (error) {
