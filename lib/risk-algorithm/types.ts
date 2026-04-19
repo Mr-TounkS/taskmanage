@@ -65,7 +65,7 @@ export interface SGRResult {
   /** Score Global de Risque [0, 100] */
   sgr: number;
   /** Niveau de risque interprété */
-  niveau: 'faible' | 'modéré' | 'élevé' | 'critique';
+  niveau: 'low' | 'moderate' | 'high' | 'critical';
   /** Sous-scores (dimensions du risque) */
   dimensions: {
     flow: number;     // R_flow

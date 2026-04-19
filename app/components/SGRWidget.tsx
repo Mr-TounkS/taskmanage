@@ -42,10 +42,10 @@ interface SGRWidgetProps {
 /** Couleur DaisyUI selon le niveau de risque */
 function couleurNiveau(niveau: SGRResult["niveau"]): string {
   switch (niveau) {
-    case "faible": return "badge-success";
-    case "modéré": return "badge-warning";
-    case "élevé": return "badge-error";
-    case "critique": return "badge-error";
+    case "low": return "badge-success";
+    case "moderate": return "badge-warning";
+    case "high": return "badge-error";
+    case "critical": return "badge-error";
     default: return "badge-neutral";
   }
 }
@@ -59,11 +59,11 @@ function couleurBarre(score: number): string {
 
 /** Libellé lisible pour chaque indicateur */
 const LABELS_INDICATEURS: Record<string, { label: string; icon: React.ReactNode }> = {
-  wip: { label: "Limite WIP", icon: <AlertTriangle className="w-3 h-3" /> },
+  wip: { label: "WIP Limit", icon: <AlertTriangle className="w-3 h-3" /> },
   cycleTime: { label: "Cycle Time", icon: <Clock className="w-3 h-3" /> },
-  age: { label: "Age des tâches", icon: <Activity className="w-3 h-3" /> },
-  throughput: { label: "Débit", icon: <TrendingDown className="w-3 h-3" /> },
-  tech: { label: "Dette tech", icon: <Code2 className="w-3 h-3" /> },
+  age: { label: "Task Age", icon: <Activity className="w-3 h-3" /> },
+  throughput: { label: "Throughput", icon: <TrendingDown className="w-3 h-3" /> },
+  tech: { label: "Tech Debt", icon: <Code2 className="w-3 h-3" /> },
 };
 
 // ---------------------------------------------------------------------------
@@ -107,7 +107,7 @@ export default function SGRWidget({ projectId, refreshKey }: SGRWidgetProps) {
     return (
       <div className="p-5 border border-base-300 rounded-xl mb-6 flex items-center gap-2 text-sm text-base-content/60">
         <span className="loading loading-spinner loading-xs"></span>
-        Calcul du SGR…
+        Calculating SGR…
       </div>
     );
   }
@@ -116,7 +116,7 @@ export default function SGRWidget({ projectId, refreshKey }: SGRWidgetProps) {
   if (erreur || !result) {
     return (
       <div className="p-5 border border-base-300 rounded-xl mb-6 text-sm text-error">
-        {erreur ?? "Données SGR indisponibles."}
+        {erreur ?? "SGR data unavailable."}
       </div>
     );
   }
@@ -128,11 +128,11 @@ export default function SGRWidget({ projectId, refreshKey }: SGRWidgetProps) {
     <div className="p-5 border border-base-300 rounded-xl mb-6">
       {/* En-tête */}
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-semibold text-sm">Score Global de Risque</h3>
+        <h3 className="font-semibold text-sm">Global Risk Score</h3>
         <button
           onClick={chargerSGR}
           className="btn btn-ghost btn-xs"
-          title="Recalculer le SGR"
+          title="Recalculate SGR"
         >
           <RefreshCw className="w-3 h-3" />
         </button>
@@ -198,9 +198,9 @@ export default function SGRWidget({ projectId, refreshKey }: SGRWidgetProps) {
         </div>
       )}
 
-      {/* Aucune alerte */}
+      {/* No alerts */}
       {result.alertes.length === 0 && (
-        <p className="text-xs text-success">Aucune alerte active.</p>
+        <p className="text-xs text-success">No active alerts.</p>
       )}
 
       {/* Graphique d'évolution temporelle du SGR */}
