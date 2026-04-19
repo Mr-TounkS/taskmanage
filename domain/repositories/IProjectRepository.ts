@@ -3,12 +3,12 @@ import { ProjectEntity } from '../entities/Project';
 import { TaskEntity } from '../entities/Task';
 import { ProjectRole } from '../entities/ProjectUser';
 
-export interface ProjectWithFlatUsers extends ProjectEntity {
+export interface ProjectWithFlatUsers extends Omit<ProjectEntity, 'users'> {
   tasks: TaskEntity[];
   users: (UserEntity & { role: ProjectRole })[];
 }
 
-export interface ProjectWithDetails extends ProjectEntity {
+export interface ProjectWithDetails extends Omit<ProjectEntity, 'users'> {
   tasks: TaskEntity[];
   users: (UserEntity & { role: ProjectRole })[];
   createdBy: UserEntity;
