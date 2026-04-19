@@ -82,8 +82,8 @@ function TooltipSGR({ active, payload, label }: TooltipProps) {
 
   // Couleur du niveau pour le badge
   const couleur =
-    niveau === "faible" ? "text-success" :
-    niveau === "modéré" ? "text-warning" :
+    niveau === "low" ? "text-success" :
+    niveau === "moderate" ? "text-warning" :
     "text-error";
 
   return (
@@ -107,7 +107,7 @@ export default function SGRHistoryChart({ historique }: SGRHistoryChartProps) {
   if (historique.length < 2) {
     return (
       <div className="flex items-center justify-center h-24 text-xs text-base-content/40 text-center px-4">
-        Recalculez le SGR plusieurs fois pour visualiser l&apos;évolution du risque dans le temps.
+        Recalculate the SGR several times to visualize risk evolution over time.
       </div>
     );
   }
@@ -123,7 +123,7 @@ export default function SGRHistoryChart({ historique }: SGRHistoryChartProps) {
   return (
     <div className="mt-4">
       <p className="text-xs text-base-content/50 mb-2 font-medium">
-        Évolution du risque ({historique.length} mesures)
+        Risk evolution ({historique.length} measurements)
       </p>
 
       <ResponsiveContainer width="100%" height={150}>
@@ -199,13 +199,13 @@ export default function SGRHistoryChart({ historique }: SGRHistoryChartProps) {
       {/* Légende des seuils */}
       <div className="flex gap-3 mt-2 justify-center">
         <span className="flex items-center gap-1 text-[10px] text-success">
-          <span className="inline-block w-4 h-px bg-success"></span> Faible &lt;30
+          <span className="inline-block w-4 h-px bg-success"></span> Low &lt;30
         </span>
         <span className="flex items-center gap-1 text-[10px] text-warning">
-          <span className="inline-block w-4 h-px bg-warning"></span> Modéré &lt;60
+          <span className="inline-block w-4 h-px bg-warning"></span> Moderate &lt;60
         </span>
         <span className="flex items-center gap-1 text-[10px] text-error">
-          <span className="inline-block w-4 h-px bg-error"></span> Critique &gt;80
+          <span className="inline-block w-4 h-px bg-error"></span> Critical &gt;80
         </span>
       </div>
     </div>
