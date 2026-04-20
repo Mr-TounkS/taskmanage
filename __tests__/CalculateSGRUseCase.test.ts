@@ -189,14 +189,14 @@ describe("CalculateSGRUseCase — orchestration", () => {
     const useCase = new CalculateSGRUseCase(makeTaskRepo(tasks), makeWIPRepo(configs));
     const result = await useCase.execute({ projectId: "proj-1", dateReference: DATE_REF });
 
-    // La somme pondérée des contributions doit ≈ SGR
-    const sommePonderee =
+    // Avec la formule hiérarchique, SGR = scoreFlow×0.50 + 0 + 0
+    // scoreFlow = somme des contributions des indicateurs de flux
+    const scoreFlow =
       result.indicateurs.wip.contribution +
       result.indicateurs.cycleTime.contribution +
       result.indicateurs.age.contribution +
-      result.indicateurs.throughput.contribution +
-      result.indicateurs.tech.contribution;
+      result.indicateurs.throughput.contribution;
 
-    expect(result.sgr).toBeCloseTo(sommePonderee, 0);
+    expect(result.sgr).toBeCloseTo(scoreFlow * 0.50, 0);
   });
 });

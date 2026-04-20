@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pandoc --track-changes=all \"C:\\\\Users\\\\Asus\\\\Desktop\\\\Memoire Agile Finale.docx\" -o /tmp/memoire_output.md)",
+      "Bash(python scripts/office/unpack.py \"C:\\\\Users\\\\Asus\\\\Desktop\\\\Memoire Agile Finale.docx\" /tmp/memoire_unpacked/)",
+      "Bash(mkdir -p /tmp/memoire_unpack)",
+      "Read(//tmp/**)",
+      "Bash(unzip -o \"C:/Users/Asus/Desktop/Memoire Agile Finale.docx\" \"word/document.xml\")",
+      "Bash(mkdir -p /tmp/memoire_v2)",
+      "Bash(unzip -o \"C:/Users/Asus/Desktop/Memoire Agile Finale Doc.docx\" \"word/document.xml\")",
+      "Bash(trash app/api/webhooks/sonarqube app/api/webhooks/sonarqube/ application/use-cases/webhook/ProcessSonarQubeWebhookUseCase.ts)"
+    ]
+  }
+}

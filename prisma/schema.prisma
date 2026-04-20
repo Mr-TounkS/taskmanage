@@ -47,7 +47,9 @@ model Project {
   // Configuration WIP par colonne pour le calcul R_WIP du SGR
   columnWIPConfig ColumnWIPConfig[]
   // Historique des scores SGR pour l'étude réflexive (section 4.2)
-  sgrHistory      SGRHistory[]
+  sgrHistory           SGRHistory[]
+  // Intégrations externes (GitHub, SonarCloud) — section 3.3
+  externalIntegrations ExternalIntegration[]
 }
 
 // Limite WIP par colonne Kanban — alimente R_WIP dans l'algorithme SGR
@@ -108,4 +110,20 @@ model ProjectUser {
   project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([userId, projectId])
+}
+
+// Intégrations externes par projet — GitHub et SonarCloud
+// Chaque ligne lie un projet TaskManage à un dépôt ou projet externe
+// Le secret HMAC permet de vérifier l'authenticité des webhooks entrants
+model ExternalIntegration {
+  id                 String   @id @default(uuid())
+  projectId          String
+  type               String   // "github" | "sonarqube"
+  externalProjectRef String   // ex: "Mr-TounkS/taskmanage" (GitHub) ou "taskmanage" (SonarCloud)
+  webhookSecret      String   // Secret HMAC-SHA256 généré lors de la configuration
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  project            Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, type])
 }
