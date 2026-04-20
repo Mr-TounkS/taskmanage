@@ -28,12 +28,20 @@ export interface SGRTechDebt {
   detteTechniqueDays: number;  // Dette technique en jours-homme
 }
 
+/** Métriques d'activité GitHub — alimente R_GitHub (section 3.3) */
+export interface SGRGitHubActivity {
+  prOpen: number;       // Nombre de PRs ouvertes au moment du calcul
+  prDelayDays: number;  // Délai moyen (jours) entre ouverture et merge
+  prStuck: number;      // Nombre de PRs sans activité depuis > 7 jours
+}
+
 /** Paramètres complets passés à calculateSGR */
 export interface SGRInput {
   tasks: SGRTask[];
   columnConfigs: SGRColumnConfig[];
-  techDebt?: SGRTechDebt; // Absent si SonarQube non intégré
-  dateReference?: Date;   // Par défaut : Date.now() — utile pour les tests
+  techDebt?: SGRTechDebt;          // Absent si SonarCloud non intégré
+  githubActivity?: SGRGitHubActivity; // Absent si GitHub non intégré
+  dateReference?: Date;            // Par défaut : Date.now() — utile pour les tests
 }
 
 // ---------------------------------------------------------------------------
@@ -65,6 +73,8 @@ export interface SGRResult {
     age: SGRIndicator;
     throughput: SGRIndicator;
     tech: SGRIndicator;
+    /** Présent uniquement si GitHub est intégré */
+    github?: SGRIndicator;
   };
   /** Avertissements lisibles pour l'interface */
   alertes: string[];
@@ -80,6 +90,16 @@ export const POIDS_SGR = {
   AGE: 0.20,
   THROUGHPUT: 0.15,
   TECH: 0.10,
+} as const;
+
+/** Pondération de l'indicateur GitHub — activé uniquement si githubActivity est fourni */
+export const POIDS_GITHUB = 0.10;
+
+/** Seuils critiques pour les métriques GitHub */
+export const VALEURS_CRITIQUES_GITHUB = {
+  PR_OPEN: 10,        // > 10 PRs ouvertes → score max
+  PR_DELAY_DAYS: 14,  // > 14 jours de délai moyen → score max
+  PR_STUCK: 5,        // > 5 PRs bloquées → score max
 } as const;
 
 /** Seuils de classification du SGR */

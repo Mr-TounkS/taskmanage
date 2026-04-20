@@ -19,8 +19,11 @@ import {
   SGRIndicator,
   SGRTask,
   SGRTechDebt,
+  SGRGitHubActivity,
   SGRColumnConfig,
   POIDS_SGR,
+  POIDS_GITHUB,
+  VALEURS_CRITIQUES_GITHUB,
   SEUILS_SGR,
   PERCENTILE_SLE,
   FENETRE_THROUGHPUT_DAYS,
@@ -390,6 +393,46 @@ function calculerRTech(techDebt?: SGRTechDebt): SGRIndicator {
 }
 
 // ---------------------------------------------------------------------------
+// Calcul R_GitHub — Activité GitHub (optionnel, poids : 10%)
+// ---------------------------------------------------------------------------
+
+/**
+ * R_GitHub mesure le risque lié à l'activité des Pull Requests sur GitHub.
+ * Présent uniquement si l'intégration GitHub est configurée pour le projet.
+ * Les métriques sont normalisées par rapport à des seuils critiques.
+ *
+ * @param github - Snapshot GitHub reçu via webhook
+ */
+function calculerRGitHub(github?: SGRGitHubActivity): SGRIndicator | undefined {
+  if (!github) return undefined;
+
+  const scorePROpen = clamp((github.prOpen / VALEURS_CRITIQUES_GITHUB.PR_OPEN) * 100);
+  const scoreDelai = clamp((github.prDelayDays / VALEURS_CRITIQUES_GITHUB.PR_DELAY_DAYS) * 100);
+  const scoreStuck = clamp((github.prStuck / VALEURS_CRITIQUES_GITHUB.PR_STUCK) * 100);
+
+  // Agrégation pondérée : PRs ouvertes = 40%, délai = 35%, bloquées = 25%
+  const score = clamp(
+    scorePROpen * 0.40 +
+    scoreDelai * 0.35 +
+    scoreStuck * 0.25
+  );
+
+  return {
+    score,
+    weight: POIDS_GITHUB,
+    contribution: score * POIDS_GITHUB,
+    details: {
+      prOpen: github.prOpen,
+      prDelayDays: github.prDelayDays,
+      prStuck: github.prStuck,
+      scorePROpen: Math.round(scorePROpen),
+      scoreDelai: Math.round(scoreDelai),
+      scoreStuck: Math.round(scoreStuck),
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Interprétation du score
 // ---------------------------------------------------------------------------
 
@@ -436,6 +479,11 @@ function genererAlertes(indicateurs: SGRResult['indicateurs']): string[] {
       `Dette technique détectée — score R_Tech : ${Math.round(indicateurs.tech.score)}/100`
     );
   }
+  if (indicateurs.github && indicateurs.github.score > 30) {
+    alertes.push(
+      `Activité GitHub à risque — score R_GitHub : ${Math.round(indicateurs.github.score)}/100`
+    );
+  }
 
   return alertes;
 }
@@ -464,17 +512,21 @@ export function calculateSGR(input: SGRInput): SGRResult {
   const age = calculerRAge(input.tasks, maintenant);
   const throughput = calculerRThroughput(input.tasks, maintenant);
   const tech = calculerRTech(input.techDebt);
+  const github = calculerRGitHub(input.githubActivity);
 
   // Agrégation pondérée : SGR = Σ (score_i × poids_i)
+  // Si GitHub est intégré, sa contribution s'ajoute (résultat clampé à 100)
   const sgr = clamp(
     wip.contribution +
       cycleTime.contribution +
       age.contribution +
       throughput.contribution +
-      tech.contribution
+      tech.contribution +
+      (github?.contribution ?? 0)
   );
 
-  const indicateurs = { wip, cycleTime, age, throughput, tech };
+  const indicateurs: SGRResult['indicateurs'] = { wip, cycleTime, age, throughput, tech };
+  if (github) indicateurs.github = github;
 
   return {
     sgr: Math.round(sgr * 10) / 10,
