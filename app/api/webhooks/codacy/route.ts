@@ -1,10 +1,10 @@
 /**
- * Route POST /api/webhooks/sonarqube?projectId=<id>
+ * Route POST /api/webhooks/codacy?projectId=<id>
  *
- * Reçoit les résultats d'analyse SonarCloud et déclenche un recalcul SGR.
- * La signature HMAC-SHA256 (en-tête X-Sonar-Webhook-HMAC-SHA256) est vérifiée.
+ * Reçoit les résultats d'analyse Codacy et déclenche un recalcul SGR.
+ * La signature HMAC-SHA256 (en-tête X-Codacy-Signature) est vérifiée avant tout traitement.
  *
- * Section mémoire : 3.3 — Intégration SonarQube
+ * Section mémoire : 3.3 — Intégration Codacy
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -13,7 +13,7 @@ import { PrismaExternalIntegrationRepository } from '@/infrastructure/repositori
 import { PrismaTaskRepository } from '@/infrastructure/repositories/PrismaTaskRepository';
 import { PrismaColumnWIPConfigRepository } from '@/infrastructure/repositories/PrismaColumnWIPConfigRepository';
 import { PrismaSGRHistoryRepository } from '@/infrastructure/repositories/PrismaSGRHistoryRepository';
-import { ProcessSonarQubeWebhookUseCase } from '@/application/use-cases/webhook/ProcessSonarQubeWebhookUseCase';
+import { ProcessCodacyWebhookUseCase } from '@/application/use-cases/webhook/ProcessCodacyWebhookUseCase';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,11 +25,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'projectId requis' }, { status: 400 });
   }
 
-  // Lire le body brut pour la vérification HMAC
   const rawBody = Buffer.from(await request.arrayBuffer());
 
-  // SonarCloud envoie la signature dans X-Sonar-Webhook-HMAC-SHA256
-  const signature = request.headers.get('x-sonar-webhook-hmac-sha256') ?? '';
+  // Codacy envoie la signature dans X-Codacy-Signature (format : "sha256=<hex>")
+  const signature = request.headers.get('x-codacy-signature') ?? '';
 
   let payload: unknown;
   try {
@@ -43,7 +42,7 @@ export async function POST(request: NextRequest) {
   const columnWIPConfigRepo = new PrismaColumnWIPConfigRepository(prisma);
   const sgrHistoryRepo = new PrismaSGRHistoryRepository(prisma);
 
-  const useCase = new ProcessSonarQubeWebhookUseCase(
+  const useCase = new ProcessCodacyWebhookUseCase(
     integrationRepo,
     taskRepo,
     columnWIPConfigRepo,
@@ -64,11 +63,11 @@ export async function POST(request: NextRequest) {
     if (message.includes('signature')) {
       return NextResponse.json({ error: message }, { status: 401 });
     }
-    if (message.includes('No SonarQube integration')) {
+    if (message.includes('No Codacy integration')) {
       return NextResponse.json({ error: message }, { status: 404 });
     }
 
-    console.error('[webhook/sonarqube]', message);
+    console.error('[webhook/codacy]', message);
     return NextResponse.json({ error: 'Erreur interne' }, { status: 500 });
   }
 }

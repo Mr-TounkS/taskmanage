@@ -1,4 +1,4 @@
-export type ExternalIntegrationType = 'github' | 'sonarqube';
+export type ExternalIntegrationType = 'github' | 'codacy';
 
 export interface ExternalIntegrationEntity {
   id: string;
