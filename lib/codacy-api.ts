@@ -67,6 +67,7 @@ export async function fetchCodacyMetrics(
 
     const quality: CodacyQualityResponse = await qualityRes.json();
     const totalIssues = quality.data?.totalIssues ?? 0;
+    console.log(`[codacy-api] ✓ ${org}/${repo} — grade: ${quality.data?.grade}, totalIssues: ${totalIssues}`);
 
     // Tentative de récupération du détail par catégorie
     let bugsBloquants = 0;
