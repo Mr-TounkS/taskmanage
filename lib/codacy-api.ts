@@ -12,26 +12,45 @@ import { SGRTechDebt } from './risk-algorithm/types';
 
 const CODACY_BASE_URL = 'https://app.codacy.com/api/v3';
 
-interface CodacyRepositoryQuality {
-  grade: string;          // "A" | "B" | "C" | "D" | "F"
-  totalIssues: number;
-  issuesToFixTotal?: number;
-  newIssues?: number;
+interface CodacyPagination {
+  total: number;
 }
 
-interface CodacyIssueCategory {
-  category: string; // "error_prone" | "security" | "code_style" | "performance" | "compatibility" | "unused_code"
-  count: number;
+interface CodacyIssuesResponse {
+  pagination: CodacyPagination;
 }
 
-interface CodacyQualityResponse {
-  data: CodacyRepositoryQuality;
-}
+/**
+ * Récupère le nombre d'issues d'une catégorie donnée via l'API Codacy.
+ * On utilise pageSize=1 pour minimiser le payload — seul pagination.total nous intéresse.
+ */
+async function fetchIssueCount(
+  org: string,
+  repo: string,
+  token: string,
+  category?: string,
+): Promise<number> {
+  const params = new URLSearchParams({ pageSize: '1' });
+  if (category) params.set('category', category);
 
-interface CodacyIssueCategoriesResponse {
-  data: {
-    categories: CodacyIssueCategory[];
-  };
+  const res = await fetch(
+    `${CODACY_BASE_URL}/organizations/gh/${org}/repositories/${repo}/issues?${params}`,
+    {
+      headers: {
+        'api-token': token,
+        'Accept': 'application/json',
+      },
+      next: { revalidate: 300 }, // Cache 5 min côté Next.js
+    },
+  );
+
+  if (!res.ok) {
+    console.warn(`[codacy-api] Issues (category=${category ?? 'all'}): ${res.status} ${res.statusText}`);
+    return -1; // Sentinelle : indique une erreur
+  }
+
+  const data: CodacyIssuesResponse = await res.json();
+  return data.pagination?.total ?? 0;
 }
 
 /**
@@ -48,61 +67,28 @@ export async function fetchCodacyMetrics(
   token: string,
 ): Promise<SGRTechDebt | null> {
   try {
-    // Récupération de la qualité globale du dépôt
-    const qualityRes = await fetch(
-      `${CODACY_BASE_URL}/organizations/gh/${org}/repositories/${repo}/repository-quality`,
-      {
-        headers: {
-          'api-token': token,
-          'Content-Type': 'application/json',
-        },
-        next: { revalidate: 300 }, // Cache 5 min côté Next.js
-      },
-    );
+    // Récupération parallèle : total + bugs bloquants (ErrorProne + Security)
+    const [totalIssues, errorProne, security] = await Promise.all([
+      fetchIssueCount(org, repo, token),
+      fetchIssueCount(org, repo, token, 'ErrorProne'),
+      fetchIssueCount(org, repo, token, 'Security'),
+    ]);
 
-    if (!qualityRes.ok) {
-      console.warn(`[codacy-api] Quality endpoint: ${qualityRes.status} ${qualityRes.statusText}`);
+    if (totalIssues === -1) {
+      console.error('[codacy-api] Impossible de récupérer les issues (endpoint inaccessible)');
       return null;
     }
 
-    const quality: CodacyQualityResponse = await qualityRes.json();
-    const totalIssues = quality.data?.totalIssues ?? 0;
-    console.log(`[codacy-api] ✓ ${org}/${repo} — grade: ${quality.data?.grade}, totalIssues: ${totalIssues}`);
-
-    // Tentative de récupération du détail par catégorie
-    let bugsBloquants = 0;
-    let codeSmells = 0;
-
-    try {
-      const categoriesRes = await fetch(
-        `${CODACY_BASE_URL}/organizations/gh/${org}/repositories/${repo}/issues/category-counts`,
-        {
-          headers: { 'api-token': token },
-          next: { revalidate: 300 },
-        },
-      );
-
-      if (categoriesRes.ok) {
-        const categories: CodacyIssueCategoriesResponse = await categoriesRes.json();
-        for (const cat of (categories.data?.categories ?? [])) {
-          if (cat.category === 'error_prone' || cat.category === 'security') {
-            bugsBloquants += cat.count;
-          } else {
-            codeSmells += cat.count;
-          }
-        }
-      } else {
-        // Fallback : estimation 20% bugs / 80% code smells
-        bugsBloquants = Math.round(totalIssues * 0.2);
-        codeSmells = totalIssues - bugsBloquants;
-      }
-    } catch {
-      bugsBloquants = Math.round(totalIssues * 0.2);
-      codeSmells = totalIssues - bugsBloquants;
-    }
+    // Bugs bloquants = ErrorProne + Security (valeur minimale : 0)
+    const bugsBloquants = Math.max(0, (errorProne === -1 ? 0 : errorProne) + (security === -1 ? 0 : security));
+    const codeSmells = Math.max(0, totalIssues - bugsBloquants);
 
     // Dette technique estimée : 30 min par issue ÷ 8h/jour
     const detteTechniqueDays = totalIssues * 0.0625;
+
+    console.log(
+      `[codacy-api] ✓ ${org}/${repo} — total: ${totalIssues}, bugs: ${bugsBloquants}, smells: ${codeSmells}, dette: ${detteTechniqueDays.toFixed(2)}j`,
+    );
 
     return { bugsBloquants, codeSmells, detteTechniqueDays };
   } catch (error) {
