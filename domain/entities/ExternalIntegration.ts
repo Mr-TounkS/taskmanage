@@ -1,4 +1,4 @@
-export type ExternalIntegrationType = 'github' | 'codacy';
+export type ExternalIntegrationType = 'github';
 
 export interface ExternalIntegrationEntity {
   id: string;

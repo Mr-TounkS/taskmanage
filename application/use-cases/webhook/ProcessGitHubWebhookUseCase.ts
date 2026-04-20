@@ -1,11 +1,16 @@
 /**
  * Use-case : Traitement des événements webhook GitHub
  *
- * Ce use-case reçoit un payload GitHub (PR events), vérifie la signature HMAC-SHA256,
- * transforme les données en SGRGitHubActivity et déclenche un recalcul SGR.
+ * Gère deux types d'événements via un seul webhook :
+ *   - pull_request : met à jour R_GitHub (métriques PR : prOpen, prDelayDays, prStuck)
+ *   - check_run    : détecte les analyses Codacy et met à jour R_Quality (SGRTechDebt)
  *
- * Section mémoire : 3.3 — Intégration GitHub
- * Section mémoire : 2.3 — Algorithme SGR (dimension R_Dev)
+ * Codacy ne fournit pas de webhooks outbound sur le plan gratuit.
+ * En revanche, il poste des GitHub Check Runs sur chaque PR analysée.
+ * Ce use-case intercepte ces check_run events pour extraire les métriques qualité.
+ *
+ * Section mémoire : 3.3 — Intégration GitHub + Codacy
+ * Section mémoire : 2.3 — Algorithme SGR (R_Dev + R_Quality)
  */
 
 import { IExternalIntegrationRepository } from '../../../domain/repositories/IExternalIntegrationRepository';
@@ -13,9 +18,12 @@ import { ITaskRepository } from '../../../domain/repositories/ITaskRepository';
 import { IColumnWIPConfigRepository } from '../../../domain/repositories/IColumnWIPConfigRepository';
 import { ISGRHistoryRepository } from '../../../domain/repositories/ISGRHistoryRepository';
 import { CalculateSGRUseCase } from '../sgr/CalculateSGRUseCase';
-import { SGRGitHubActivity } from '../../../lib/risk-algorithm/types';
+import { SGRGitHubActivity, SGRTechDebt } from '../../../lib/risk-algorithm/types';
 
-// Payload minimal attendu de GitHub pour les PR events
+// ---------------------------------------------------------------------------
+// Types — payloads GitHub
+// ---------------------------------------------------------------------------
+
 interface GitHubPRPayload {
   action: string;
   repository?: { full_name: string };
@@ -25,18 +33,34 @@ interface GitHubPRPayload {
     merged_at: string | null;
     draft: boolean;
   };
-  // GitHub envoie 'installation' pour les GitHub Apps
-  installation?: { id: number };
 }
+
+interface GitHubCheckRunPayload {
+  action: string;
+  check_run?: {
+    name: string;
+    conclusion: string | null; // "success" | "failure" | "neutral" | "skipped" | null
+    app?: { slug: string };   // "codacy" pour les check runs Codacy
+    output?: {
+      title: string | null;   // ex: "Found 5 issues" ou "No issues found"
+      summary: string | null;
+    };
+  };
+}
+
+type GitHubPayload = GitHubPRPayload | GitHubCheckRunPayload | Record<string, unknown>;
 
 export interface ProcessGitHubWebhookInput {
   projectId: string;
-  payload: GitHubPRPayload;
-  /** Signature fournie dans l'en-tête X-Hub-Signature-256 */
+  payload: GitHubPayload;
+  event: string;  // valeur de l'en-tête X-Github-Event
   signature: string;
-  /** Body brut (Buffer) pour la vérification HMAC */
   rawBody: Buffer;
 }
+
+// ---------------------------------------------------------------------------
+// Use-case
+// ---------------------------------------------------------------------------
 
 export class ProcessGitHubWebhookUseCase {
   constructor(
@@ -47,39 +71,44 @@ export class ProcessGitHubWebhookUseCase {
   ) {}
 
   async execute(input: ProcessGitHubWebhookInput): Promise<void> {
-    const { projectId, payload, signature, rawBody } = input;
+    const { projectId, payload, event, signature, rawBody } = input;
 
-    // 1. Récupérer la configuration d'intégration GitHub pour ce projet
     const integration = await this.integrationRepository.findByProjectAndType(projectId, 'github');
     if (!integration) {
       throw new Error(`No GitHub integration configured for project ${projectId}`);
     }
 
-    // 2. Vérifier la signature HMAC-SHA256
     const isValid = await verifyGitHubSignature(rawBody, integration.webhookSecret, signature);
     if (!isValid) {
       throw new Error('Invalid GitHub webhook signature');
     }
 
-    // 3. Ignorer les événements non pertinents pour le SGR
-    if (payload.action !== 'opened' && payload.action !== 'closed' &&
-        payload.action !== 'reopened' && payload.action !== 'synchronize') {
-      return;
-    }
-
-    // 4. Calculer les métriques GitHub Activity depuis l'historique SGR existant
-    // On reconstitue une activité approximative (nombre de PRs ouverts, délai moyen)
-    // depuis le payload courant et l'historique stocké
-    const githubActivity = extractGitHubActivity(payload);
-
-    // 5. Déclencher un recalcul SGR avec les nouvelles données GitHub
     const sgrUseCase = new CalculateSGRUseCase(
       this.taskRepository,
       this.columnWIPConfigRepository,
       this.sgrHistoryRepository,
     );
 
-    await sgrUseCase.execute({ projectId, githubActivity });
+    if (event === 'pull_request') {
+      const pr = (payload as GitHubPRPayload);
+      if (pr.action !== 'opened' && pr.action !== 'closed' &&
+          pr.action !== 'reopened' && pr.action !== 'synchronize') return;
+
+      const githubActivity = extractGitHubActivity(pr);
+      await sgrUseCase.execute({ projectId, githubActivity });
+      return;
+    }
+
+    if (event === 'check_run') {
+      const checkRunPayload = payload as GitHubCheckRunPayload;
+      const cr = checkRunPayload.check_run;
+      // Traiter uniquement les check runs Codacy terminés
+      if (!cr || cr.app?.slug !== 'codacy' || checkRunPayload.action !== 'completed') return;
+      if (cr.conclusion === null || cr.conclusion === 'skipped') return;
+
+      const techDebt = extractCodacyTechDebt(cr);
+      await sgrUseCase.execute({ projectId, techDebt });
+    }
   }
 }
 
@@ -87,10 +116,6 @@ export class ProcessGitHubWebhookUseCase {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Vérifie la signature X-Hub-Signature-256 de GitHub.
- * Format attendu : "sha256=<hex_digest>"
- */
 async function verifyGitHubSignature(
   body: Buffer,
   secret: string,
@@ -106,28 +131,39 @@ async function verifyGitHubSignature(
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-/**
- * Transforme un payload GitHub PR en SGRGitHubActivity.
- * Approximation : on ne dispose que d'un événement à la fois depuis le webhook.
- * Les métriques agrégées (prOpen, prDelayDays) sont calculées à partir des données disponibles.
- */
 function extractGitHubActivity(payload: GitHubPRPayload): SGRGitHubActivity {
   const pr = payload.pull_request;
   if (!pr) return { prOpen: 0, prDelayDays: 0, prStuck: 0 };
 
   const isOpen = pr.state === 'open' && !pr.draft;
-  const prOpen = isOpen ? 1 : 0;
-
-  const openedAt = new Date(pr.created_at);
-  const now = new Date();
-  const ageDays = (now.getTime() - openedAt.getTime()) / (1000 * 60 * 60 * 24);
-
-  // Une PR ouverte depuis > 7 jours sans merge est considérée "bloquée"
-  const prStuck = isOpen && ageDays > 7 ? 1 : 0;
+  const ageDays = (Date.now() - new Date(pr.created_at).getTime()) / (1000 * 60 * 60 * 24);
 
   return {
-    prOpen,
+    prOpen: isOpen ? 1 : 0,
     prDelayDays: isOpen ? Math.round(ageDays) : 0,
-    prStuck,
+    prStuck: isOpen && ageDays > 7 ? 1 : 0,
   };
+}
+
+/**
+ * Extrait les métriques de qualité depuis un check run Codacy.
+ *
+ * Le titre du check run Codacy suit le format :
+ *   "Found X issues" → X issues au total
+ *   "No issues found" → 0 issue
+ *   "Fixed X issues" → amélioration
+ *
+ * Sans détail par catégorie dans les check runs (contrairement à l'API Codacy),
+ * on estime : 20% de bugs, 80% de code smells, 30 min de dette par issue.
+ */
+function extractCodacyTechDebt(checkRun: NonNullable<GitHubCheckRunPayload['check_run']>): SGRTechDebt {
+  const title = checkRun.output?.title ?? '';
+  const match = title.match(/(\d+)\s+issue/i);
+  const totalIssues = match ? parseInt(match[1], 10) : 0;
+
+  const bugsBloquants = Math.round(totalIssues * 0.2);
+  const codeSmells = totalIssues - bugsBloquants;
+  const detteTechniqueDays = totalIssues * 0.0625; // 30 min/issue ÷ 8h/jour
+
+  return { bugsBloquants, codeSmells, detteTechniqueDays };
 }

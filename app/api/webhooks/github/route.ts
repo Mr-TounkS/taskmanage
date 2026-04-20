@@ -1,10 +1,16 @@
 /**
  * Route POST /api/webhooks/github?projectId=<id>
  *
- * Reçoit les événements Pull Request depuis GitHub et déclenche un recalcul SGR.
- * La signature HMAC-SHA256 (en-tête X-Hub-Signature-256) est vérifiée avant tout traitement.
+ * Reçoit les événements GitHub et déclenche un recalcul SGR.
+ * Gère deux types d'événements :
+ *   - pull_request : met à jour R_GitHub (activité PR)
+ *   - check_run    : intercepte les analyses Codacy et met à jour R_Quality
  *
- * Section mémoire : 3.3 — Intégration GitHub
+ * La signature HMAC-SHA256 (X-Hub-Signature-256) est vérifiée avant tout traitement.
+ * Codacy n'ayant pas de webhooks outbound sur le plan gratuit, ses résultats
+ * arrivent via les GitHub Check Runs qu'il poste automatiquement.
+ *
+ * Section mémoire : 3.3 — Intégration GitHub + Codacy
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -15,8 +21,9 @@ import { PrismaColumnWIPConfigRepository } from '@/infrastructure/repositories/P
 import { PrismaSGRHistoryRepository } from '@/infrastructure/repositories/PrismaSGRHistoryRepository';
 import { ProcessGitHubWebhookUseCase } from '@/application/use-cases/webhook/ProcessGitHubWebhookUseCase';
 
-// Next.js App Router — désactiver le body parser automatique pour lire le buffer brut
 export const dynamic = 'force-dynamic';
+
+const ACCEPTED_EVENTS = new Set(['pull_request', 'check_run', 'ping']);
 
 export async function POST(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -26,23 +33,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'projectId requis' }, { status: 400 });
   }
 
-  // Lire le body brut pour la vérification HMAC
   const rawBody = Buffer.from(await request.arrayBuffer());
-
-  // Signature GitHub dans l'en-tête X-Hub-Signature-256
   const signature = request.headers.get('x-hub-signature-256') ?? '';
-
-  // Type d'événement GitHub (push, pull_request, etc.)
   const event = request.headers.get('x-github-event') ?? '';
 
-  // Ignorer tout ce qui n'est pas un événement PR
-  if (event !== 'pull_request' && event !== 'ping') {
-    return NextResponse.json({ ignored: true, event }, { status: 200 });
-  }
-
-  // Répondre immédiatement au ping de configuration
+  // Répondre au ping de configuration GitHub
   if (event === 'ping') {
     return NextResponse.json({ pong: true }, { status: 200 });
+  }
+
+  // Ignorer les événements non pertinents pour le SGR
+  if (!ACCEPTED_EVENTS.has(event)) {
+    return NextResponse.json({ ignored: true, event }, { status: 200 });
   }
 
   let payload: unknown;
@@ -67,6 +69,7 @@ export async function POST(request: NextRequest) {
   try {
     await useCase.execute({
       projectId,
+      event,
       payload: payload as Parameters<typeof useCase.execute>[0]['payload'],
       signature,
       rawBody,
@@ -75,11 +78,9 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erreur inconnue';
 
-    // Signature invalide → 401
     if (message.includes('signature')) {
       return NextResponse.json({ error: message }, { status: 401 });
     }
-    // Intégration non configurée → 404
     if (message.includes('No GitHub integration')) {
       return NextResponse.json({ error: message }, { status: 404 });
     }
