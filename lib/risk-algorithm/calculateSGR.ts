@@ -164,10 +164,10 @@ function calculerRQuality(techDebt?: SGRTechDebt): SGRIndicator {
 // ---------------------------------------------------------------------------
 
 function interpreterNiveau(sgr: number): SGRResult['niveau'] {
-  if (sgr <= SEUILS_SGR.FAIBLE) return 'faible';
-  if (sgr <= SEUILS_SGR.MODERE) return 'modéré';
-  if (sgr <= SEUILS_SGR.ELEVE) return 'élevé';
-  return 'critique';
+  if (sgr <= SEUILS_SGR.FAIBLE) return 'low';
+  if (sgr <= SEUILS_SGR.MODERE) return 'moderate';
+  if (sgr <= SEUILS_SGR.ELEVE) return 'high';
+  return 'critical';
 }
 
 function genererAlertes(indicateurs: SGRResult['indicateurs']): string[] {

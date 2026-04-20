@@ -81,10 +81,17 @@ export class CalculateSGRUseCase {
 
     // Persistance de l'historique SGR si le repository est disponible
     if (this.sgrHistoryRepository) {
+      const niveauDB = {
+        low: 'faible',
+        moderate: 'modéré',
+        high: 'élevé',
+        critical: 'critique',
+      } as const satisfies Record<SGRResult['niveau'], 'faible' | 'modéré' | 'élevé' | 'critique'>;
+
       await this.sgrHistoryRepository.save({
         projectId,
         sgr: result.sgr,
-        niveau: result.niveau,
+        niveau: niveauDB[result.niveau],
         alertes: JSON.stringify(result.alertes),
       });
     }

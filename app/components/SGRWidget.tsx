@@ -42,10 +42,10 @@ interface SGRWidgetProps {
 /** Couleur DaisyUI selon le niveau de risque */
 function couleurNiveau(niveau: SGRResult["niveau"]): string {
   switch (niveau) {
-    case "faible": return "badge-success";
-    case "modéré": return "badge-warning";
-    case "élevé": return "badge-error";
-    case "critique": return "badge-error";
+    case "low": return "badge-success";
+    case "moderate": return "badge-warning";
+    case "high": return "badge-error";
+    case "critical": return "badge-error";
     default: return "badge-neutral";
   }
 }
@@ -57,13 +57,13 @@ function couleurBarre(score: number): string {
   return "progress-error";
 }
 
-/** Libellé lisible pour chaque indicateur */
+/** Libellé lisible pour chaque indicateur (5 seulement, sans github) */
 const LABELS_INDICATEURS: Record<string, { label: string; icon: React.ReactNode }> = {
-  wip: { label: "Limite WIP", icon: <AlertTriangle className="w-3 h-3" /> },
+  wip: { label: "WIP Limit", icon: <AlertTriangle className="w-3 h-3" /> },
   cycleTime: { label: "Cycle Time", icon: <Clock className="w-3 h-3" /> },
-  age: { label: "Age des tâches", icon: <Activity className="w-3 h-3" /> },
-  throughput: { label: "Débit", icon: <TrendingDown className="w-3 h-3" /> },
-  tech: { label: "Dette tech", icon: <Code2 className="w-3 h-3" /> },
+  age: { label: "Task Age", icon: <Activity className="w-3 h-3" /> },
+  throughput: { label: "Throughput", icon: <TrendingDown className="w-3 h-3" /> },
+  tech: { label: "Tech Debt", icon: <Code2 className="w-3 h-3" /> },
 };
 
 // ---------------------------------------------------------------------------
@@ -158,29 +158,28 @@ export default function SGRWidget({ projectId, refreshKey }: SGRWidgetProps) {
         max={100}
       />
 
-      {/* Indicateurs détaillés */}
+      {/* Indicateurs détaillés (5 seulement : wip, cycleTime, age, throughput, tech) */}
       <div className="space-y-2 mb-4">
-        {(Object.entries(result.indicateurs) as [string, SGRResult["indicateurs"]["wip"]][]).map(
-          ([cle, indicateur]) => {
-            const meta = LABELS_INDICATEURS[cle];
-            return (
-              <div key={cle} className="flex items-center gap-2">
-                <span className="text-base-content/60">{meta?.icon}</span>
-                <span className="text-xs text-base-content/70 w-24 shrink-0">
-                  {meta?.label}
-                </span>
-                <progress
-                  className={`progress flex-1 h-1.5 ${couleurBarre(indicateur.score)}`}
-                  value={indicateur.score}
-                  max={100}
-                />
-                <span className="text-xs tabular-nums w-8 text-right">
-                  {Math.round(indicateur.score)}
-                </span>
-              </div>
-            );
-          }
-        )}
+        {(["wip", "cycleTime", "age", "throughput", "tech"] as const).map((cle) => {
+          const indicateur = result.indicateurs[cle];
+          const meta = LABELS_INDICATEURS[cle];
+          return (
+            <div key={cle} className="flex items-center gap-2">
+              <span className="text-base-content/60">{meta?.icon}</span>
+              <span className="text-xs text-base-content/70 w-20 shrink-0">
+                {meta?.label}
+              </span>
+              <progress
+                className={`progress flex-1 h-1.5 ${couleurBarre(indicateur.score)}`}
+                value={indicateur.score}
+                max={100}
+              />
+              <span className="text-xs tabular-nums w-8 text-right">
+                {Math.round(indicateur.score)}
+              </span>
+            </div>
+          );
+        })}
       </div>
 
       {/* Alertes actives */}
@@ -198,9 +197,9 @@ export default function SGRWidget({ projectId, refreshKey }: SGRWidgetProps) {
         </div>
       )}
 
-      {/* Aucune alerte */}
+      {/* No alerts */}
       {result.alertes.length === 0 && (
-        <p className="text-xs text-success">Aucune alerte active.</p>
+        <p className="text-xs text-success">No active alerts.</p>
       )}
 
       {/* Graphique d'évolution temporelle du SGR */}
