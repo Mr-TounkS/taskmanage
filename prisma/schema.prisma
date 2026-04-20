@@ -83,6 +83,20 @@ model Task {
   createdById         String
   createdBy           User      @relation("CreatedTasks", fields: [createdById], references: [id])
   solutionDescription String?
+  // Fichiers joints à la tâche lors de sa clôture
+  files               TaskFile[]
+}
+
+// Fichiers attachés à une tâche — stockés dans Vercel Blob
+model TaskFile {
+  id           String   @id @default(uuid())
+  taskId       String
+  task         Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  fileName     String   // Nom du fichier original
+  fileSize     Int      // Taille en octets
+  mimeType     String   // Type MIME (ex: application/pdf)
+  blobUrl      String   // URL publique Vercel Blob
+  uploadedAt   DateTime @default(now())
 }
 
 // Historique des scores SGR — alimente la section 4.2 du mémoire (étude réflexive)
