@@ -210,7 +210,11 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
 
             {/* ── Onglet Board (Kanban) ── */}
             {vue === "kanban" && (
-                project?.tasks && project.tasks.length > 0 ? (
+                !project ? (
+                    <div className="flex justify-center py-16">
+                        <span className="loading loading-spinner loading-lg text-primary" />
+                    </div>
+                ) : project.tasks && project.tasks.length > 0 ? (
                     <KanbanBoard
                         tasks={project.tasks}
                         email={email}
@@ -278,7 +282,11 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                     </div>
 
                     <div className="border border-base-300 shadow-sm rounded-xl">
-                        {filteredTasks && filteredTasks.length > 0 ? (
+                        {!project ? (
+                            <div className="flex justify-center py-16">
+                                <span className="loading loading-spinner loading-lg text-primary" />
+                            </div>
+                        ) : filteredTasks && filteredTasks.length > 0 ? (
                             <div className="overflow-auto">
                                 <table className="table table-lg">
                                     <thead>

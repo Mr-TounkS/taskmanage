@@ -16,7 +16,7 @@ export class PrismaTaskRepository implements ITaskRepository {
   async findByIdWithRelations(taskId: string): Promise<TaskWithRelations | null> {
     return this.prisma.task.findUnique({
       where: { id: taskId },
-      include: { project: true, user: true, createdBy: true },
+      include: { project: true, user: true, createdBy: true, files: true },
     }) as Promise<TaskWithRelations | null>;
   }
 

@@ -9,6 +9,7 @@ import Link from "next/link";
 import React, { useEffect, useState } from "react";
 import 'react-quill-new/dist/quill.snow.css'
 import { toast } from "react-toastify";
+import { FileText, Image as ImageIcon, ExternalLink, Paperclip } from "lucide-react";
 
 import dynamic from 'next/dynamic';
 
@@ -220,21 +221,53 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                             />
                         </div>
 
-                        {
-                            task?.solutionDescription && (
-                                <div>
-                                    <div className="badge badge-primary my-4">
-                                        Solution
-                                    </div>
-                                    <div className="ql-snow w-full">
-                                        <div
-                                            className="ql-editor p-5 border-base-300 border rounded-xl"
-                                            dangerouslySetInnerHTML={{ __html: task.solutionDescription }}
-                                        />
-                                    </div>
+                        {task?.solutionDescription && (
+                            <div>
+                                <div className="badge badge-primary my-4">Solution</div>
+                                <div className="ql-snow w-full">
+                                    <div
+                                        className="ql-editor p-5 border-base-300 border rounded-xl"
+                                        dangerouslySetInnerHTML={{ __html: task.solutionDescription }}
+                                    />
                                 </div>
-                            )
-                        }
+                            </div>
+                        )}
+
+                        {/* Pièces jointes */}
+                        {(task as any)?.files?.length > 0 && (
+                            <div className="mt-6">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <Paperclip className="w-4 h-4 text-base-content/60" />
+                                    <span className="text-sm font-semibold text-base-content/70 uppercase tracking-wide">
+                                        Pièces jointes ({(task as any).files.length})
+                                    </span>
+                                </div>
+                                <div className="flex flex-col gap-2">
+                                    {(task as any).files.map((file: { id: string; fileName: string; fileSize: number; mimeType: string; blobUrl: string }) => (
+                                        <a
+                                            key={file.id}
+                                            href={file.blobUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex items-center gap-3 p-3 border border-base-300 rounded-xl hover:bg-base-200 transition-colors group"
+                                        >
+                                            {file.mimeType.startsWith("image/") ? (
+                                                <ImageIcon className="w-5 h-5 text-primary shrink-0" />
+                                            ) : (
+                                                <FileText className="w-5 h-5 text-primary shrink-0" />
+                                            )}
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-medium truncate">{file.fileName}</p>
+                                                <p className="text-xs text-base-content/40">
+                                                    {Math.round(file.fileSize / 1024)} Ko
+                                                </p>
+                                            </div>
+                                            <ExternalLink className="w-4 h-4 text-base-content/30 group-hover:text-primary shrink-0" />
+                                        </a>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
 
                         <dialog id="my_modal_3" className="modal">
                             <div className="modal-box">
