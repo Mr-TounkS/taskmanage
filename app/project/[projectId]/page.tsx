@@ -8,6 +8,10 @@ import UserInfo from "@/app/components/UserInfo";
 import dynamic from "next/dynamic";
 
 // Chargement différé des composants lourds pour réduire le TBT (Total Blocking Time)
+const CalendarView = dynamic(() => import("@/app/components/CalendarView"), {
+    loading: () => <div className="skeleton h-96 w-full rounded-xl" />,
+    ssr: false,
+});
 const KanbanBoard = dynamic(() => import("@/app/components/KanbanBoard"), {
     loading: () => <div className="flex justify-center py-10"><span className="loading loading-spinner loading-lg text-primary" /></div>,
     ssr: false,
@@ -38,8 +42,8 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
     const [assignedFilter, setAssignedFilter] = useState<boolean>(false);
     const [taskCounts, setTaskCounts] = useState({ todo: 0, inProgress: 0, done: 0, assigned: 0 })
     const [sgrRefreshKey, setSgrRefreshKey] = useState(0)
-    // Vue active : "kanban", "liste" ou "overview"
-    const [vue, setVue] = useState<"liste" | "kanban" | "overview">("kanban")
+    // Vue active : "kanban", "liste", "overview" ou "calendar"
+    const [vue, setVue] = useState<"liste" | "kanban" | "overview" | "calendar">("kanban")
     const [userRole, setUserRole] = useState<'PO' | 'MEMBER'>('MEMBER')
 
     const fetchInfos = async (projectId: string) => {
@@ -180,10 +184,11 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                         { id: "overview", icon: <SlidersHorizontal className="w-4 h-4" />, label: "Overview" },
                         { id: "liste", icon: <List className="w-4 h-4" />, label: "List" },
                         { id: "kanban", icon: <Kanban className="w-4 h-4" />, label: "Board" },
+                        { id: "calendar", icon: <Calendar className="w-4 h-4" />, label: "Calendar" },
                     ].map(({ id, icon, label }) => (
                         <button
                             key={id}
-                            onClick={() => setVue(id as "overview" | "liste" | "kanban")}
+                            onClick={() => setVue(id as "overview" | "liste" | "kanban" | "calendar")}
                             className={`flex items-center gap-2 px-3 sm:px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors shrink-0
                                 ${vue === id
                                     ? "border-primary text-primary"
@@ -193,18 +198,13 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                             {icon} {label}
                         </button>
                     ))}
-                    {/* Onglets placeholder */}
-                    {[
-                        { icon: <Calendar className="w-4 h-4" />, label: "Calendar" },
-                        { icon: <Files className="w-4 h-4" />, label: "Files" },
-                    ].map(({ icon, label }) => (
-                        <button key={label} disabled
-                            className="flex items-center gap-2 px-3 sm:px-4 py-3 text-sm font-medium border-b-2 border-transparent text-base-content/25 cursor-not-allowed whitespace-nowrap shrink-0"
-                            title="Coming soon"
-                        >
-                            {icon} {label}
-                        </button>
-                    ))}
+                    {/* Onglet Files — placeholder */}
+                    <button disabled
+                        className="flex items-center gap-2 px-3 sm:px-4 py-3 text-sm font-medium border-b-2 border-transparent text-base-content/25 cursor-not-allowed whitespace-nowrap shrink-0"
+                        title="Coming soon"
+                    >
+                        <Files className="w-4 h-4" /> Files
+                    </button>
                 </div>
             </div>
 
@@ -317,6 +317,14 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                         )}
                     </div>
                 </div>
+            )}
+
+            {/* ── Onglet Calendrier ── */}
+            {vue === "calendar" && (
+                <CalendarView
+                    tasks={project?.tasks || []}
+                    email={email}
+                />
             )}
 
             {/* ── Onglet Vue d'ensemble (SGR, WIP, info projet) ── */}
