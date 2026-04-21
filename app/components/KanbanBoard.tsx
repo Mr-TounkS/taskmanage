@@ -22,7 +22,8 @@ import dynamic from "next/dynamic"
 import "react-quill-new/dist/quill.snow.css"
 import { Task } from "@/app/type"
 import KanbanCard from "./KanbanCard"
-import { updateTaskStatus } from "@/app/actions"
+import FileUploadZone, { PendingFile } from "./FileUploadZone"
+import { updateTaskStatus, uploadTaskFile } from "@/app/actions"
 import { toast } from "react-toastify"
 import { ListTodo, Loader, CircleCheckBig, WifiOff } from "lucide-react"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
@@ -91,6 +92,7 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
     // Identifiant de la tâche en attente de clôture (drag vers "Done")
     const [pendingTaskId, setPendingTaskId] = useState<string | null>(null)
     const [solution, setSolution] = useState("")
+    const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([])
     const [enCours, setEnCours] = useState(false)
     const modalRef = useRef<HTMLDialogElement>(null)
 
@@ -142,6 +144,7 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
             // Règle métier : une solution est obligatoire pour clôturer une tâche
             setPendingTaskId(draggableId)
             setSolution("")
+            setPendingFiles([])
             modalRef.current?.showModal()
             return
         }
@@ -211,9 +214,28 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
 
         try {
             await updateTaskStatus(pendingTaskId, "Done", solution)
+
+            // Upload des fichiers joints après clôture (optionnel)
+            if (pendingFiles.length > 0) {
+                const failed: string[] = []
+                for (const pf of pendingFiles) {
+                    try {
+                        const fd = new FormData()
+                        fd.append("file", pf.file)
+                        await uploadTaskFile(pendingTaskId, fd)
+                    } catch {
+                        failed.push(pf.file.name)
+                    }
+                }
+                if (failed.length > 0) {
+                    toast.warn(`Tâche clôturée mais ${failed.length} fichier(s) non uploadé(s)`)
+                }
+            }
+
             modalRef.current?.close()
             setPendingTaskId(null)
             setSolution("")
+            setPendingFiles([])
             onTaskMoved()
             toast.success("Tâche clôturée !")
         } catch {
@@ -228,6 +250,7 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
         modalRef.current?.close()
         setPendingTaskId(null)
         setSolution("")
+        setPendingFiles([])
     }
 
     // Filtre les tâches par colonne (sur la copie locale pour les updates optimistes)
@@ -326,6 +349,13 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
                         modules={modules}
                         onChange={setSolution}
                     />
+                    <div className="mt-4">
+                        <FileUploadZone
+                            files={pendingFiles}
+                            onChange={setPendingFiles}
+                            disabled={enCours}
+                        />
+                    </div>
                     <div className="flex gap-2 mt-4">
                         <button onClick={annuler} className="btn btn-ghost btn-sm flex-1">
                             Annuler

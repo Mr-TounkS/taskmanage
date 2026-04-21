@@ -1,6 +1,7 @@
 "use server"
 
 import prisma from "@/lib/prisma";
+import { put, del } from "@vercel/blob";
 
 // Infrastructure
 import { PrismaUserRepository } from "@/infrastructure/repositories/PrismaUserRepository";
@@ -293,6 +294,93 @@ export async function getSGRHistory(projectId: string): Promise<{
         console.error('[SGR History Error]', error);
         return [];
     }
+}
+
+const ALLOWED_MIME_TYPES = [
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "image/webp",
+];
+
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
+const MAX_FILES_PER_TASK = 5;
+
+export interface TaskFileResult {
+    id: string;
+    name: string;
+    url: string;
+    size: number;
+    mimeType: string;
+}
+
+/**
+ * Upload a file to Vercel Blob and attach it to a task.
+ * Validates type (PDF, Office docs, images) and size (≤ 5 MB).
+ */
+export async function uploadTaskFile(taskId: string, formData: FormData): Promise<TaskFileResult> {
+    const file = formData.get("file") as File | null;
+    if (!file) throw new Error("Aucun fichier fourni");
+
+    if (!ALLOWED_MIME_TYPES.includes(file.type)) {
+        throw new Error(`Type de fichier non autorisé : ${file.type}`);
+    }
+    if (file.size > MAX_FILE_SIZE) {
+        throw new Error("Le fichier dépasse la limite de 5 Mo");
+    }
+
+    // Vérifie la limite par tâche
+    const existingCount = await prisma.taskFile.count({ where: { taskId } });
+    if (existingCount >= MAX_FILES_PER_TASK) {
+        throw new Error(`Maximum ${MAX_FILES_PER_TASK} fichiers par tâche`);
+    }
+
+    const blob = await put(`tasks/${taskId}/${file.name}`, file, {
+        access: "public",
+        addRandomSuffix: true,
+    });
+
+    const taskFile = await prisma.taskFile.create({
+        data: { taskId, name: file.name, url: blob.url, size: file.size, mimeType: file.type },
+    });
+
+    return {
+        id: taskFile.id,
+        name: taskFile.name,
+        url: taskFile.url,
+        size: taskFile.size,
+        mimeType: taskFile.mimeType,
+    };
+}
+
+/**
+ * Delete a file from Vercel Blob and remove it from the database.
+ */
+export async function deleteTaskFile(fileId: string): Promise<void> {
+    const taskFile = await prisma.taskFile.findUnique({ where: { id: fileId } });
+    if (!taskFile) throw new Error("Fichier introuvable");
+
+    await del(taskFile.url);
+    await prisma.taskFile.delete({ where: { id: fileId } });
+}
+
+/**
+ * Get all files attached to a task.
+ */
+export async function getTaskFiles(taskId: string): Promise<TaskFileResult[]> {
+    const files = await prisma.taskFile.findMany({
+        where: { taskId },
+        orderBy: { createdAt: "asc" },
+        select: { id: true, name: true, url: true, size: true, mimeType: true },
+    });
+    return files;
 }
 
 export const updateTaskStatus = async (

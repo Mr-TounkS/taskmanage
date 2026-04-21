@@ -23,6 +23,7 @@
     "@prisma/adapter-neon": "^7.6.0",
     "@prisma/client": "^7.4.0",
     "@types/web-push": "^3.6.4",
+    "@vercel/blob": "^2.3.3",
     "firebase": "^12.11.0",
     "firebase-admin": "^13.7.0",
     "lucide-react": "^0.564.0",
