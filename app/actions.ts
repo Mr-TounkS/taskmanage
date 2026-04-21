@@ -1,7 +1,6 @@
 "use server"
 
 import prisma from "@/lib/prisma";
-
 // Infrastructure
 import { PrismaUserRepository } from "@/infrastructure/repositories/PrismaUserRepository";
 import { PrismaProjectRepository } from "@/infrastructure/repositories/PrismaProjectRepository";

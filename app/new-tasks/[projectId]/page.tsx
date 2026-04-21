@@ -1,6 +1,7 @@
 "use client"
-import { createTask, getProjectInfo, getProjectUser } from '@/app/actions';
+import { createTask, getProjectInfo, getProjectUser, uploadTaskFile } from '@/app/actions';
 import AssignTask from '@/app/components/AssignTask';
+import FileUploadZone, { PendingFile } from '@/app/components/FileUploadZone';
 import Wrapper from '@/app/components/Wrapper'
 import { Project } from '@/app/type';
 import { useUser } from '@clerk/nextjs';
@@ -45,6 +46,8 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
     const [dueDate, setDueDate] = useState<Date | null>(null)
     const [name, setName] = useState("")
     const [description, setDescription] = useState("")
+    const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([])
+    const [uploading, setUploading] = useState(false)
     const rooter = useRouter()
 
     const fetchInfos = async (projectId: string) => {
@@ -81,10 +84,31 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
             return
         }
         try {
-            await createTask(name, description, priority, startDate, dueDate, projectId, email, selectedUser.email)
+            setUploading(true)
+            const task = await createTask(name, description, priority, startDate, dueDate, projectId, email, selectedUser.email)
+
+            // Upload des fichiers joints (optionnel)
+            if (pendingFiles.length > 0 && task?.id) {
+                const failed: string[] = []
+                for (const pf of pendingFiles) {
+                    try {
+                        const fd = new FormData()
+                        fd.append("file", pf.file)
+                        await uploadTaskFile(task.id, fd)
+                    } catch {
+                        failed.push(pf.file.name)
+                    }
+                }
+                if (failed.length > 0) {
+                    toast.warn(`Tâche créée mais ${failed.length} fichier(s) non uploadé(s) : ${failed.join(", ")}`)
+                }
+            }
+
             rooter.push(`/project/${projectId}`)
         } catch (error) {
             toast.error("An error occurred while creating the task." + error);
+        } finally {
+            setUploading(false)
         }
     }
 
@@ -196,9 +220,27 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                                 onChange={setDescription}
                             />
                         </div>
+
+                        {/* Pièces jointes — optionnel */}
+                        <div className='border border-base-300 rounded-xl p-4'>
+                            <FileUploadZone
+                                files={pendingFiles}
+                                onChange={setPendingFiles}
+                                disabled={uploading}
+                            />
+                        </div>
+
                         <div className='flex justify-end'>
-                            <button className='btn btn-primary w-full sm:w-auto' onClick={handleSubmit}>
-                                Create task
+                            <button
+                                className='btn btn-primary w-full sm:w-auto'
+                                onClick={handleSubmit}
+                                disabled={uploading}
+                            >
+                                {uploading ? (
+                                    <><span className="loading loading-spinner loading-sm" /> Creating...</>
+                                ) : (
+                                    "Create task"
+                                )}
                             </button>
                         </div>
                     </div>
