@@ -36,24 +36,24 @@ const TaskComponent: FC<TaskProps> = ({task, index, email, onDelete}) => {
                 ${task.status == "In Progress" ? "bg-yellow-200" : ""}
                 ${task.status == "Done" ? "bg-green-200" : ""}
                 `}>
-                    {task.status == "To Do" && "A faire"}
-                    {task.status == "In Progress" && "En cours"}
-                    {task.status == "Done" && "Terminé"}
+                    {task.status == "To Do" && "To Do"}
+                    {task.status == "In Progress" && "In Progress"}
+                    {task.status == "Done" && "Done"}
                 </div>
                 {/* Badge priorité */}
                 {task.priority === 'HIGH' && (
                     <span className="badge badge-error badge-sm gap-1">
-                        <AlertTriangle className="w-3 h-3" /> Élevée
+                        <AlertTriangle className="w-3 h-3" /> High
                     </span>
                 )}
                 {(!task.priority || task.priority === 'MEDIUM') && (
                     <span className="badge badge-warning badge-sm gap-1">
-                        <Minus className="w-3 h-3" /> Moyenne
+                        <Minus className="w-3 h-3" /> Medium
                     </span>
                 )}
                 {task.priority === 'LOW' && (
                     <span className="badge badge-success badge-sm gap-1">
-                        <ArrowDown className="w-3 h-3" /> Faible
+                        <ArrowDown className="w-3 h-3" /> Low
                     </span>
                 )}
             </div>
