@@ -84,7 +84,6 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
     // Identifiant de la tâche en attente de clôture (drag vers "Done")
     const [pendingTaskId, setPendingTaskId] = useState<string | null>(null)
     const [solution, setSolution] = useState("")
-    const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([])
     const [enCours, setEnCours] = useState(false)
     const modalRef = useRef<HTMLDialogElement>(null)
     // Colonne active sur mobile (une colonne affichée à la fois)
@@ -286,27 +285,9 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
         try {
             await updateTaskStatus(pendingTaskId, "Done", solution)
 
-            // Upload des fichiers joints après clôture (optionnel)
-            if (pendingFiles.length > 0) {
-                const failed: string[] = []
-                for (const pf of pendingFiles) {
-                    try {
-                        const fd = new FormData()
-                        fd.append("file", pf.file)
-                        await uploadTaskFile(pendingTaskId, fd)
-                    } catch {
-                        failed.push(pf.file.name)
-                    }
-                }
-                if (failed.length > 0) {
-                    toast.warn(`Tâche clôturée mais ${failed.length} fichier(s) non uploadé(s)`)
-                }
-            }
-
             modalRef.current?.close()
             setPendingTaskId(null)
             setSolution("")
-            setPendingFiles([])
             onTaskMoved()
             toast.success("Task closed!")
         } catch {
