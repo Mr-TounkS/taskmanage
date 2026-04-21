@@ -101,13 +101,17 @@
 
 #### 2.3 Algorithme SGR — Score Global de Risque
 ```
-SGR = 0.30×R_WIP + 0.25×R_CT + 0.20×R_Age + 0.15×R_Throughput + 0.10×R_Tech
+SGR = 0.50×R_flow + 0.30×R_dev + 0.20×R_quality
+
+R_flow = 0.40×R_WIP + 0.30×R_CT + 0.20×R_Age + 0.10×R_Throughput
 ```
-- R_WIP (30%) : dépassement des limites WIP — Loi de Little
-- R_CT (25%) : écart Cycle Time vs historique — SLE 85e percentile
-- R_Age (20%) : % tâches au-delà du SLE
-- R_Throughput (15%) : baisse débit vs moyenne 90 jours
-- R_Tech (10%) : bugs critiques + code smells (SonarQube)
+- **R_flow (50%)** : indicateurs de flux Kanban
+  - R_WIP (40%) : dépassement des limites WIP — Loi de Little
+  - R_CT (30%) : écart Cycle Time vs historique — SLE 85e percentile
+  - R_Age (20%) : % tâches au-delà du SLE
+  - R_Throughput (10%) : baisse débit vs moyenne 90 jours
+- **R_dev (30%)** : indicateurs de développement (optionnel, GitHub)
+- **R_quality (20%)** : indicateurs de qualité — Codacy (bugs + smells + dette technique)
 
 > Référence complète : `docs/sgr-algorithm.md`
 
@@ -133,11 +137,15 @@ SGR = 0.30×R_WIP + 0.25×R_CT + 0.20×R_Age + 0.15×R_Throughput + 0.10×R_Tech
 - Service Worker : stratégies de cache, synchronisation hors ligne
 - Manifest PWA : installabilité, icônes, splash screen
 
-#### 3.3 Intégration GitHub + SonarQube (webhooks)
-- Architecture des webhooks (Next.js API Routes)
-- Récupération des métriques GitHub (commits, issues ouvertes, PR)
-- Récupération des métriques SonarQube (bugs, code smells, dette technique)
-- Alimentation du R_Tech dans l'algorithme SGR
+#### 3.3 Intégration Codacy pour l'indicateur R_Quality
+- **Remplacement pragmatique** : SonarQube → Codacy (justification : webhooks sortants gratuits via GitHub Check Runs)
+- Architecture : API REST v3 polling au lieu de webhooks (justification : réactivité, pas de latence CI/CD)
+- Récupération des métriques : `POST /analysis/organizations/gh/{org}/repositories/{repo}/issues/search`
+- Métriques capturées : bugs critiques (Error), code smells, dette technique estimée
+- Alimentation du R_Quality (poids 20%) dans l'algorithme SGR
+- Historique des tentatives et débogage (endpoint 404 initial → solution finale)
+
+> Référence complète : `docs/integration-codacy.md`
 
 #### 3.4 Module actif de gestion des risques
 - Calcul automatique du SGR (déclenchement sur événement + polling)

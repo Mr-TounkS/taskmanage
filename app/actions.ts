@@ -27,6 +27,7 @@ import { UpsertWIPConfigUseCase } from "@/application/use-cases/wip/UpsertWIPCon
 // Use Cases - SGR
 import { CalculateSGRUseCase } from "@/application/use-cases/sgr/CalculateSGRUseCase";
 import { SGRTechDebt } from "@/lib/risk-algorithm/types";
+import { fetchCodacyMetrics } from "@/lib/codacy-api";
 
 // Push notifications
 import { sendPushToSubscriptions } from "@/lib/push-notifications";
@@ -165,7 +166,8 @@ export const getTakDetails = async (taskId: string) => {
 
 /**
  * Calcule le Score Global de Risque (SGR) pour un projet.
- * Données SonarQube optionnelles — absentes si l'intégration n'est pas configurée.
+ * Si CODACY_API_TOKEN est configuré, les métriques qualité sont récupérées
+ * automatiquement depuis l'API Codacy (R_Quality).
  */
 export async function getProjectSGR(
     projectId: string,
@@ -173,9 +175,20 @@ export async function getProjectSGR(
 ) {
     const { taskRepo, columnWIPConfigRepo, sgrHistoryRepo } = makeRepos();
     try {
+        // Récupération automatique des métriques Codacy si le token est disponible
+        const codacyToken = process.env.CODACY_API_TOKEN;
+        const codacyOrg = process.env.CODACY_ORG ?? 'Mr-TounkS';
+        const codacyRepo = process.env.CODACY_REPO ?? 'taskmanage';
+
+        const resolvedTechDebt = techDebt ?? (
+            codacyToken
+                ? await fetchCodacyMetrics(codacyOrg, codacyRepo, codacyToken)
+                : null
+        ) ?? undefined;
+
         const result = await new CalculateSGRUseCase(taskRepo, columnWIPConfigRepo, sgrHistoryRepo).execute({
             projectId,
-            techDebt,
+            techDebt: resolvedTechDebt,
         });
 
         // Déclenche une notification push si le SGR dépasse le seuil d'alerte

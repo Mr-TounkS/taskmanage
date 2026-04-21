@@ -15,12 +15,14 @@ import { ITaskRepository } from '../../../domain/repositories/ITaskRepository';
 import { IColumnWIPConfigRepository } from '../../../domain/repositories/IColumnWIPConfigRepository';
 import { ISGRHistoryRepository } from '../../../domain/repositories/ISGRHistoryRepository';
 import { calculateSGR } from '../../../lib/risk-algorithm/calculateSGR';
-import { SGRResult, SGRTechDebt } from '../../../lib/risk-algorithm/types';
+import { SGRResult, SGRTechDebt, SGRGitHubActivity } from '../../../lib/risk-algorithm/types';
 
 export interface CalculateSGRInput {
   projectId: string;
-  /** Données SonarQube optionnelles — absentes si l'intégration n'est pas configurée */
+  /** Données SonarCloud optionnelles — absentes si l'intégration n'est pas configurée */
   techDebt?: SGRTechDebt;
+  /** Données GitHub optionnelles — absentes si l'intégration n'est pas configurée */
+  githubActivity?: SGRGitHubActivity;
   /** Date de référence — utile pour les tests déterministes */
   dateReference?: Date;
 }
@@ -40,7 +42,7 @@ export class CalculateSGRUseCase {
    * @returns SGRResult avec score, niveau de risque, détail des indicateurs et alertes
    */
   async execute(input: CalculateSGRInput): Promise<SGRResult> {
-    const { projectId, techDebt, dateReference } = input;
+    const { projectId, techDebt, githubActivity, dateReference } = input;
 
     // Récupération parallèle des données pour minimiser la latence
     const [taches, colonnesWIP] = await Promise.all([
@@ -73,15 +75,23 @@ export class CalculateSGRUseCase {
       tasks: sgrTasks,
       columnConfigs: sgrColumnConfigs,
       techDebt,
+      githubActivity,
       dateReference,
     });
 
     // Persistance de l'historique SGR si le repository est disponible
     if (this.sgrHistoryRepository) {
+      const niveauDB = {
+        low: 'faible',
+        moderate: 'modéré',
+        high: 'élevé',
+        critical: 'critique',
+      } as const satisfies Record<SGRResult['niveau'], 'faible' | 'modéré' | 'élevé' | 'critique'>;
+
       await this.sgrHistoryRepository.save({
         projectId,
         sgr: result.sgr,
-        niveau: result.niveau,
+        niveau: niveauDB[result.niveau],
         alertes: JSON.stringify(result.alertes),
       });
     }
