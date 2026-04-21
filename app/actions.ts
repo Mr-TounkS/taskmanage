@@ -337,6 +337,22 @@ export const updateTaskStatus = async (
     }
 };
 
+/**
+ * Retourne tous les fichiers attachés à une tâche, triés par date d'upload.
+ */
+export const getTaskFiles = async (taskId: string) => {
+    try {
+        return await prisma.taskFile.findMany({
+            where: { taskId },
+            orderBy: { uploadedAt: 'asc' },
+            select: { id: true, fileName: true, fileSize: true, mimeType: true, blobUrl: true },
+        });
+    } catch (error) {
+        console.error('[GetTaskFiles Error]', error);
+        return [];
+    }
+};
+
 // Téléchargement de fichiers pour les tâches complétées
 export const uploadTaskFile = async (taskId: string, formData: FormData) => {
     const { put } = await import('@vercel/blob');
