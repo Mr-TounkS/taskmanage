@@ -172,9 +172,9 @@ function interpreterNiveau(sgr: number): SGRResult['niveau'] {
 
 function genererAlertes(indicateurs: SGRResult['indicateurs']): string[] {
   const alertes: string[] = [];
-  if (indicateurs.wip.score > 0) alertes.push(`Limite WIP dépassée (${Math.round(indicateurs.wip.score)}%)`);
-  if (indicateurs.github && indicateurs.github.score > 30) alertes.push(`Activité GitHub à risque (${Math.round(indicateurs.github.score)}%)`);
-  if (indicateurs.tech.score > 30) alertes.push(`Dette technique élevée (${Math.round(indicateurs.tech.score)}%)`);
+  if (indicateurs.wip.score > 0) alertes.push(`WIP limit exceeded (${Math.round(indicateurs.wip.score)}%)`);
+  if (indicateurs.github && indicateurs.github.score > 30) alertes.push(`GitHub activity at risk (${Math.round(indicateurs.github.score)}%)`);
+  if (indicateurs.tech.score > 30) alertes.push(`High technical debt (${Math.round(indicateurs.tech.score)}%)`);
   return alertes;
 }
 
