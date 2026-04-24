@@ -27,7 +27,7 @@ const WIPConfigWidget = dynamic(() => import("@/app/components/WIPConfigWidget")
 import Wrapper from "@/app/components/Wrapper";
 import { Project } from "@/app/type";
 import { useUser } from "@clerk/nextjs";
-import { Calendar, ChevronDown, CircleCheckBig, CopyPlus, Files, Kanban, List, ListTodo, Loader, Pencil, Share2, SlidersHorizontal, UserCheck, Zap } from "lucide-react";
+import { Calendar, CircleCheckBig, CopyPlus, Files, Kanban, List, ListTodo, Loader, Pencil, Share2, SlidersHorizontal, UserCheck, Zap } from "lucide-react";
 import Link from "next/link";
 import React, { useEffect, useState } from "react";
 import { toast } from "react-toastify";
@@ -266,19 +266,6 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                             <UserCheck className="w-3.5 h-3.5" /> My tasks
                             <span className="badge badge-sm">{taskCounts.assigned}</span>
                         </button>
-
-                        {/* Advanced filters (visual placeholders) */}
-                        <div className="flex items-center gap-2 ml-auto">
-                            <button disabled className="btn btn-ghost btn-sm gap-1.5 border border-base-300 opacity-40 cursor-not-allowed" title="Coming soon">
-                                Assigned <ChevronDown className="w-3 h-3" />
-                            </button>
-                            <button disabled className="btn btn-ghost btn-sm gap-1.5 border border-base-300 opacity-40 cursor-not-allowed" title="Coming soon">
-                                Priority <ChevronDown className="w-3 h-3" />
-                            </button>
-                            <button disabled className="btn btn-ghost btn-sm gap-1.5 border border-base-300 opacity-40 cursor-not-allowed" title="Coming soon">
-                                <SlidersHorizontal className="w-3.5 h-3.5" /> Advanced filters
-                            </button>
-                        </div>
                     </div>
 
                     <div className="border border-base-300 shadow-sm rounded-xl">
