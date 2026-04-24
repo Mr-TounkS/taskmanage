@@ -2,10 +2,9 @@ import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
 
 // Routes accessibles sans authentification
 const isPublicRoute = createRouteMatcher([
-  '/sign-in(.*)',   // Page de connexion Clerk
-  '/sign-up(.*)',   // Page d'inscription Clerk
-  '/offline',       // Fallback PWA — doit fonctionner sans connexion internet
-  '/manifest.json', // Manifest PWA — requis pour l'installation sur mobile
+  '/sign-in(.*)',
+  '/sign-up(.*)',
+  '/offline',
 ])
 
 export default clerkMiddleware(async (auth, request) => {
@@ -16,8 +15,9 @@ export default clerkMiddleware(async (auth, request) => {
 
 export const config = {
   matcher: [
-    // Skip Next.js internals and all static files, unless found in search params
-    '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
+    // Exclut : fichiers Next.js internes, fichiers statiques, et fichiers PWA
+    // json exclu ici (manifest.json) — les routes API JSON sont couvertes par le 2e pattern
+    '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest|json|txt)).*)',
     // Always run for API routes
     '/(api|trpc)(.*)',
   ],
