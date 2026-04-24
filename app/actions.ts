@@ -1,7 +1,6 @@
 "use server"
 
 import prisma from "@/lib/prisma";
-
 // Infrastructure
 import { PrismaUserRepository } from "@/infrastructure/repositories/PrismaUserRepository";
 import { PrismaProjectRepository } from "@/infrastructure/repositories/PrismaProjectRepository";
@@ -20,6 +19,7 @@ import { AddUserToProjectUseCase } from "@/application/use-cases/project/AddUser
 import { GetProjectsAssociatedWithUserUseCase } from "@/application/use-cases/project/GetProjectsAssociatedWithUserUseCase";
 import { GetProjectInfoUseCase } from "@/application/use-cases/project/GetProjectInfoUseCase";
 import { GetProjectUsersUseCase } from "@/application/use-cases/project/GetProjectUsersUseCase";
+import { GetTeamsOverviewUseCase } from "@/application/use-cases/project/GetTeamsOverviewUseCase";
 
 // Use Cases - WIP
 import { UpsertWIPConfigUseCase } from "@/application/use-cases/wip/UpsertWIPConfigUseCase";
@@ -118,6 +118,16 @@ export async function getProjectUser(idProject: string) {
         return await new GetProjectUsersUseCase(projectRepo).execute(idProject);
     } catch (error) {
         console.error('[getProjectUser Error]', error);
+        throw error;
+    }
+}
+
+export async function getTeamsOverview(email: string) {
+    const { projectRepo } = makeRepos();
+    try {
+        return await new GetTeamsOverviewUseCase(projectRepo).execute(email);
+    } catch (error) {
+        console.error('[getTeamsOverview Error]', error);
         throw error;
     }
 }
@@ -334,6 +344,91 @@ export const updateTaskStatus = async (
         return await new UpdateTaskStatusUseCase(taskRepo).execute(taskId, newStatus, solutionDescription);
     } catch (error) {
         console.error('[UpdateStatus Error]', error);
+        throw error;
+    }
+};
+
+/**
+ * Retourne tous les fichiers attachés à une tâche, triés par date d'upload.
+ */
+export const getTaskFiles = async (taskId: string) => {
+    try {
+        return await prisma.taskFile.findMany({
+            where: { taskId },
+            orderBy: { uploadedAt: 'asc' },
+            select: { id: true, fileName: true, fileSize: true, mimeType: true, blobUrl: true },
+        });
+    } catch (error) {
+        console.error('[GetTaskFiles Error]', error);
+        return [];
+    }
+};
+
+// Téléchargement de fichiers pour les tâches complétées
+export const uploadTaskFile = async (taskId: string, formData: FormData) => {
+    const { put } = await import('@vercel/blob');
+
+    try {
+        const file = formData.get('file') as File;
+        if (!file) throw new Error('No file provided');
+
+        // Validation de la taille (max 5 MB)
+        const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
+        if (file.size > MAX_SIZE) {
+            throw new Error(`File size exceeds 5 MB limit. Size: ${Math.round(file.size / 1024 / 1024)} MB`);
+        }
+
+        // Vérification du nombre de fichiers existants
+        const existingFiles = await prisma.taskFile.findMany({ where: { taskId } });
+        if (existingFiles.length >= 5) {
+            throw new Error('Maximum 5 files per task');
+        }
+
+        // Upload vers Vercel Blob
+        const filename = `${Date.now()}-${file.name}`;
+        const blob = await put(`tasks/${taskId}/${filename}`, file, { access: 'public' });
+
+        // Enregistrement des métadonnées
+        const taskFile = await prisma.taskFile.create({
+            data: {
+                taskId,
+                fileName: file.name,
+                fileSize: file.size,
+                mimeType: file.type,
+                blobUrl: blob.url,
+            },
+        });
+
+        return {
+            fileId: taskFile.id,
+            fileName: taskFile.fileName,
+            fileSize: taskFile.fileSize,
+            blobUrl: taskFile.blobUrl,
+        };
+    } catch (error) {
+        console.error('[Upload File Error]', error);
+        throw error;
+    }
+};
+
+// Suppression de fichier
+export const deleteTaskFile = async (fileId: string) => {
+    const { del } = await import('@vercel/blob');
+
+    try {
+        // Récupération du fichier avant suppression
+        const taskFile = await prisma.taskFile.findUnique({ where: { id: fileId } });
+        if (!taskFile) throw new Error('File not found');
+
+        // Suppression de Vercel Blob
+        await del(taskFile.blobUrl);
+
+        // Suppression de la base de données
+        await prisma.taskFile.delete({ where: { id: fileId } });
+
+        return { success: true };
+    } catch (error) {
+        console.error('[Delete File Error]', error);
         throw error;
     }
 };

@@ -22,9 +22,9 @@ import dynamic from "next/dynamic"
 import "react-quill-new/dist/quill.snow.css"
 import { Task } from "@/app/type"
 import KanbanCard from "./KanbanCard"
-import { updateTaskStatus } from "@/app/actions"
+import { updateTaskStatus, uploadTaskFile, deleteTaskFile } from "@/app/actions"
 import { toast } from "react-toastify"
-import { CircleCheckBig, MoreHorizontal, Plus, WifiOff } from "lucide-react"
+import { CircleCheckBig, MoreHorizontal, Plus, WifiOff, Upload, FileIcon, X } from "lucide-react"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { useOfflineQueue } from "@/hooks/useOfflineQueue"
 
@@ -89,6 +89,16 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
     // Colonne active sur mobile (une colonne affichée à la fois)
     const [mobileCol, setMobileCol] = useState<string>("To Do")
 
+    // État pour le téléchargement de fichiers
+    interface UploadedFile {
+        fileId: string
+        fileName: string
+        fileSize: number
+        blobUrl: string
+    }
+    const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
+    const [uploadingFiles, setUploadingFiles] = useState(new Set<string>())
+
     // Détection de la connexion et file d'attente offline
     const isOnline = useOnlineStatus()
     const { execute: executeOffline } = useOfflineQueue()
@@ -137,6 +147,8 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
             // Règle métier : une solution est obligatoire pour clôturer une tâche
             setPendingTaskId(draggableId)
             setSolution("")
+            setUploadedFiles([])
+            setUploadingFiles(new Set())
             modalRef.current?.showModal()
             return
         }
@@ -169,6 +181,72 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
             // Rollback de la mise à jour optimiste en cas d'erreur
             applyOptimisticMove(draggableId, source.droppableId)
             toast.error("Failed to move task")
+        }
+    }
+
+    /**
+     * Gère l'ajout de fichiers à la tâche.
+     * Valide la taille et le nombre de fichiers avant upload vers Vercel Blob.
+     */
+    const handleAddFiles = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        if (!pendingTaskId) return
+        const fileList = event.currentTarget.files
+        if (!fileList) return
+
+        const MAX_SIZE = 5 * 1024 * 1024 // 5 MB
+        const filesToUpload: File[] = []
+
+        // Validation
+        for (let i = 0; i < fileList.length; i++) {
+            const file = fileList[i]
+            if (uploadedFiles.length + filesToUpload.length >= 5) {
+                toast.error("Maximum 5 files per task")
+                break
+            }
+            if (file.size > MAX_SIZE) {
+                toast.error(`${file.name} exceeds 5 MB limit`)
+                continue
+            }
+            filesToUpload.push(file)
+        }
+
+        // Upload en parallèle
+        const uploadPromises = filesToUpload.map(async (file) => {
+            const fileKey = file.name
+            setUploadingFiles((prev) => new Set([...prev, fileKey]))
+
+            try {
+                const formData = new FormData()
+                formData.append('file', file)
+                const result = await uploadTaskFile(pendingTaskId, formData)
+                setUploadedFiles((prev) => [...prev, result as UploadedFile])
+                toast.success(`${file.name} uploaded`)
+            } catch (error) {
+                toast.error(`Failed to upload ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+            } finally {
+                setUploadingFiles((prev) => {
+                    const next = new Set(prev)
+                    next.delete(fileKey)
+                    return next
+                })
+            }
+        })
+
+        await Promise.all(uploadPromises)
+        // Reset file input
+        event.currentTarget.value = ""
+    }
+
+    /**
+     * Supprime un fichier de la liste et de Vercel Blob.
+     */
+    const handleRemoveFile = async (fileId: string, fileName: string) => {
+        try {
+            await deleteTaskFile(fileId)
+            setUploadedFiles((prev) => prev.filter((f) => f.fileId !== fileId))
+            toast.success(`${fileName} removed`)
+        } catch {
+            toast.error(`Failed to remove ${fileName}`)
         }
     }
 
@@ -206,6 +284,7 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
 
         try {
             await updateTaskStatus(pendingTaskId, "Done", solution)
+
             modalRef.current?.close()
             setPendingTaskId(null)
             setSolution("")
@@ -223,6 +302,8 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
         modalRef.current?.close()
         setPendingTaskId(null)
         setSolution("")
+        setUploadedFiles([])
+        setUploadingFiles(new Set())
     }
 
     // Filtre les tâches par colonne (sur la copie locale pour les updates optimistes)
@@ -336,9 +417,9 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
                 </div> {/* fin grille colonnes */}
             </DragDropContext>
 
-            {/* Modal de clôture — solution obligatoire pour passer en "Done" */}
+            {/* Modal de clôture — solution obligatoire + fichiers optionnels */}
             <dialog ref={modalRef} className="modal">
-                <div className="modal-box">
+                <div className="modal-box max-w-md">
                     <button
                         onClick={annuler}
                         className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
@@ -346,22 +427,91 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
                         ✕
                     </button>
                     <h3 className="font-bold text-lg">What is the solution?</h3>
-                    <p className="py-3 text-base-content/60 text-sm">
-                        Describe exactly what you did to close this task.
+                    <p className="py-2 text-base-content/60 text-sm">
+                        Describe what you did to close this task, and optionally attach supporting files.
                     </p>
-                    <ReactQuill
-                        placeholder="Describe the solution..."
-                        value={solution}
-                        modules={modules}
-                        onChange={setSolution}
-                    />
+
+                    {/* Description de solution */}
+                    <div className="mb-4">
+                        <label className="text-xs font-medium text-base-content/70 mb-1 block">
+                            Solution Description *
+                        </label>
+                        <ReactQuill
+                            placeholder="Describe the solution..."
+                            value={solution}
+                            modules={modules}
+                            onChange={setSolution}
+                        />
+                    </div>
+
+                    {/* Upload de fichiers */}
+                    <div className="mb-4">
+                        <label className="text-xs font-medium text-base-content/70 mb-2 block">
+                            Attachments (up to 5 files, 5 MB each)
+                        </label>
+                        <div className="border-2 border-dashed border-base-300 rounded-lg p-3 text-center hover:border-primary transition-colors cursor-pointer mb-2">
+                            <label className="cursor-pointer flex flex-col items-center gap-1">
+                                <Upload className="w-5 h-5 text-base-content/40" />
+                                <span className="text-xs text-base-content/60">
+                                    Click to select or drag files
+                                </span>
+                                <input
+                                    type="file"
+                                    multiple
+                                    accept=".doc,.docx,.ppt,.pptx,.xls,.xlsx,.pdf"
+                                    onChange={handleAddFiles}
+                                    disabled={uploadingFiles.size > 0 || uploadedFiles.length >= 5}
+                                    className="hidden"
+                                />
+                            </label>
+                        </div>
+
+                        {/* Liste des fichiers uploadés */}
+                        {uploadedFiles.length > 0 && (
+                            <div className="space-y-1">
+                                {uploadedFiles.map((file) => (
+                                    <div
+                                        key={file.fileId}
+                                        className="flex items-center justify-between gap-2 text-xs bg-base-200 p-2 rounded-lg"
+                                    >
+                                        <div className="flex items-center gap-1.5 min-w-0">
+                                            <FileIcon className="w-3.5 h-3.5 shrink-0 text-primary" />
+                                            <div className="min-w-0">
+                                                <p className="truncate text-base-content/80">
+                                                    {file.fileName}
+                                                </p>
+                                                <p className="text-base-content/50">
+                                                    {Math.round(file.fileSize / 1024)} KB
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => handleRemoveFile(file.fileId, file.fileName)}
+                                            className="btn btn-ghost btn-xs btn-circle shrink-0"
+                                            title="Remove file"
+                                        >
+                                            <X className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Fichiers en cours d'upload */}
+                        {uploadingFiles.size > 0 && (
+                            <div className="text-xs text-base-content/60 mt-2">
+                                Uploading {uploadingFiles.size} file(s)...
+                            </div>
+                        )}
+                    </div>
+
                     <div className="flex gap-2 mt-4">
                         <button onClick={annuler} className="btn btn-ghost btn-sm flex-1">
                             Cancel
                         </button>
                         <button
                             onClick={confirmerCloture}
-                            disabled={solution.replace(/<[^>]*>/g, "").trim() === "" || enCours}
+                            disabled={solution.replace(/<[^>]*>/g, "").trim() === "" || enCours || uploadingFiles.size > 0}
                             className="btn btn-primary btn-sm flex-1"
                         >
                             {enCours ? (

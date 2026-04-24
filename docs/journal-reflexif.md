@@ -282,3 +282,79 @@ en séquence aurait doublé inutilement le temps de chargement du widget.
 - Question de soutenance potentielle : "Votre courbe SGR commence à 0. Comment
   distinguez-vous un risque réellement nul d'un artefact lié à l'absence de données
   historiques au démarrage du projet ?"
+
+---
+
+## Entrée #10 — 2026-04-24
+
+### Déclencheur
+Implémentation de l'onglet Teams — visualisation des membres d'équipe avec statistiques
+de tâches, double vue (cartes / tableau) et filtres interactifs. Feature motivée par un
+besoin concret : l'outil gérait les tâches mais ne donnait aucune visibilité sur la charge
+individuelle des membres ni les indicateurs de risque humain (retards, surcharge).
+
+### Contexte technique
+- Fichiers créés :
+  - `application/use-cases/project/GetTeamsOverviewUseCase.ts` — agrège stats par membre
+  - `app/teams/page.tsx` — Server Component, résumé global + délégation au client
+  - `app/components/TeamsClient.tsx` — Client Component, toggle + filtres + rendu dual
+  - `app/components/MemberCard.tsx` — carte présentationnelle par membre
+  - `__tests__/GetTeamsOverviewUseCase.test.ts` — 7 tests unitaires
+- Fichiers modifiés :
+  - `app/type.ts` — +`TeamMemberStats` interface
+  - `app/actions.ts` — +`getTeamsOverview(email)` Server Action
+  - `app/components/Sidebar.tsx` — Teams activé (déplacé de `comingSoonItems` vers `activeNavItems`)
+- Tests : 7 nouveaux tests ✅, 0 régression sur les 33 tests existants
+
+### Décision prise
+
+**Réutiliser `findManyAssociatedWithUser` plutôt que créer une nouvelle requête Prisma**
+La méthode existante retourne déjà `ProjectWithFlatUsers` (projets + users + tasks).
+L'agrégation des statistiques par membre est faite en mémoire dans le use case, sans
+aller-retour supplémentaire vers la base de données. Cette approche évite de surcharger
+l'infrastructure pour une feature de visualisation dont le volume de données reste limité.
+Alternative rejetée : créer une requête SQL agrégée (`GROUP BY userId`) — plus performante
+à grande échelle, mais prématurée pour un projet académique où le nombre de membres
+par projet est borné (< 20).
+
+**State local pour le toggle de vue (cards/table)**
+Le toggle `view: 'cards' | 'table'` est géré en state React local dans `TeamsClient.tsx`.
+Alternative considérée : persister le choix dans `localStorage` pour retrouver la dernière
+vue à la reconnexion. Rejeté — la complexité n'est pas justifiée pour une préférence
+d'affichage sans impact métier.
+
+**Découpage Server Component (page) + Client Component (TeamsClient)**
+La page `/teams` est un Server Component qui effectue le fetch et passe les données
+au composant client. Ce pattern garantit que le fetch ne se fait qu'une fois, côté serveur,
+et que le rendu initial est statique (pas de loading state visible). Le Client Component
+prend en charge uniquement l'interactivité (toggle, filtres).
+
+### Impact observé
+- Sur l'interface : l'onglet Teams est désormais fonctionnel et accessible depuis la sidebar
+- Sur la visibilité risque : les filtres "Overdue" et "High load" matérialisent visuellement
+  des indicateurs de risque humain — R_Age (retard individuel) et surcharge WIP
+- Sur l'architecture : 0 modification au domain layer — le use case s'insère proprement
+  dans la Clean Architecture sans violer les règles de dépendance
+- Sur le calendrier : feature complète en une session, sans régression
+
+### Leçon pour le mémoire
+- Section concernée : Chapitre 3, section 3.2 (réalisation) ; Chapitre 4, section 4.1
+  (analyse des risques humains)
+- Enseignement 1 (risque humain = dimension manquante du SGR) : L'onglet Teams révèle
+  que le SGR actuel mesure des risques de flux (WIP, Cycle Time, Throughput) mais pas
+  les risques humains distribués (surcharge individuelle, retards d'un membre spécifique).
+  La vue Teams est complémentaire au SGR : elle localise le risque là où le SGR le détecte.
+  Argument exploitable en section 4.1 pour discuter des limites de l'algorithme et des
+  extensions possibles (R_Load = indicateur de charge individuelle).
+- Enseignement 2 (réutilisation vs requête dédiée) : Le choix de réutiliser
+  `findManyAssociatedWithUser` illustre un arbitrage classique entre optimisation précoce
+  et pragmatisme. Pour un mémoire de Master, documenter ce choix et ses limites (passage
+  à l'échelle) est plus instructif qu'optimiser une requête pour un contexte qui n'existera
+  pas. Pertinent pour la section 3.2 sous l'angle "décisions architecturales justifiées".
+- Enseignement 3 (Server/Client split Next.js 15+) : Le pattern `Server Component fetch →
+  Client Component interactivité` est la recommandation officielle Next.js App Router.
+  Le respecter ici alors que la feature aurait pu être entièrement client-side démontre
+  une maîtrise du framework au-delà du tutoriel — argument pour la section 3.1.
+- Question de soutenance potentielle : "Votre onglet Teams affiche la charge individuelle,
+  mais elle n'entre pas dans le calcul SGR. Envisagez-vous d'intégrer un indicateur de
+  risque humain dans l'algorithme, et pourquoi ne l'avez-vous pas fait ?"

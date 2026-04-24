@@ -12,9 +12,19 @@ export interface CreateTaskData {
   userId: string;
 }
 
+export interface TaskFile {
+  id: string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  blobUrl: string;
+  uploadedAt: Date;
+}
+
 export interface TaskWithRelations extends TaskEntity {
   user: UserEntity | null;
   createdBy: UserEntity;
+  files: TaskFile[];
   project: {
     id: string;
     name: string;

@@ -1,5 +1,5 @@
 "use client"
-import { getProjectInfo, getTakDetails, updateTaskStatus } from "@/app/actions";
+import { getProjectInfo, getTakDetails, getTaskFiles, updateTaskStatus } from "@/app/actions";
 import EmptyState from "@/app/components/EmptyState";
 import UserInfo from "@/app/components/UserInfo";
 import Wrapper from "@/app/components/Wrapper";
@@ -9,23 +9,27 @@ import Link from "next/link";
 import React, { useEffect, useState } from "react";
 import 'react-quill-new/dist/quill.snow.css'
 import { toast } from "react-toastify";
-
+import { FileText, Image as ImageIcon, ExternalLink, Paperclip } from "lucide-react";
 import dynamic from 'next/dynamic';
 
-// On importe ReactQuill dynamiquement et on désactive le SSR
 const ReactQuill = dynamic(() => import('react-quill-new'), {
     ssr: false,
-    loading: () => <div className="h-40 w-full bg-base-200 animate-pulse rounded-xl">Chargement de l'éditeur...</div>
+    loading: () => <div className="h-40 w-full bg-base-200 animate-pulse rounded-xl" />,
 });
 
-// L'import du CSS reste le même
-import 'react-quill-new/dist/quill.snow.css';
-
+interface AttachedFile {
+    id: string;
+    fileName: string;
+    fileSize: number;
+    mimeType: string;
+    blobUrl: string;
+}
 
 const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
 
     const { user } = useUser();
     const email = user?.primaryEmailAddress?.emailAddress;
+
     const [task, setTask] = useState<Task | null>(null)
     const [taskId, setTaskId] = useState<string>("")
     const [projectId, setProjectId] = useState("");
@@ -33,7 +37,10 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
     const [status, setStatus] = useState("");
     const [realStatus, setRealStatus] = useState("");
     const [solution, setSolution] = useState("");
-
+    // État de chargement — évite d'afficher "tâche inexistante" pendant le fetch
+    const [isLoading, setIsLoading] = useState(true)
+    // Fichiers joints à la tâche
+    const [files, setFiles] = useState<AttachedFile[]>([])
 
     const modules = {
         toolbar: [
@@ -48,16 +55,23 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
         ]
     };
 
-
     const fetchInfos = async (taskId: string) => {
+        setIsLoading(true)
         try {
-            const task = await getTakDetails(taskId)
-            setTask(task)
-            setStatus(task.status)
-            setRealStatus(task.status)
-            fetchProject(task.projectId)
+            // Charge la tâche et ses fichiers joints en parallèle
+            const [taskData, taskFiles] = await Promise.all([
+                getTakDetails(taskId),
+                getTaskFiles(taskId),
+            ])
+            setTask(taskData)
+            setStatus(taskData.status)
+            setRealStatus(taskData.status)
+            setFiles(taskFiles as AttachedFile[])
+            fetchProject(taskData.projectId)
         } catch (error) {
             toast.error('Erreur lors du chargement des details de la tache !');
+        } finally {
+            setIsLoading(false)
         }
     }
 
@@ -69,6 +83,7 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
             toast.error('Erreur lors du chargement du projet !');
         }
     }
+
     useEffect(() => {
         const getId = async () => {
             const resolvedParams = await params;
@@ -103,22 +118,16 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
 
     const closeTask = async (newStatus: string) => {
         const modal = document.getElementById('my_modal_3') as HTMLDialogElement;
-
-        // Cette regex supprime toutes les balises HTML et les espaces vides
         const strippedSolution = solution.replace(/<[^>]*>/g, '').trim();
 
         try {
-            // On vérifie si le contenu "nettoyé" est vide
             if (strippedSolution !== "") {
                 await updateTaskStatus(taskId, newStatus, solution);
                 fetchInfos(taskId);
-                if (modal) {
-                    modal.close();
-                }
+                if (modal) modal.close();
                 toast.success('Tache cloturée');
-                setSolution(""); // Optionnel : vider l'éditeur après succès
+                setSolution("");
             } else {
-                // Maintenant, cela s'affichera si l'utilisateur n'a rien tapé d'utile
                 toast.error('Il manque une solution');
             }
         } catch (error) {
@@ -129,141 +138,192 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
     useEffect(() => {
         const modal = document.getElementById('my_modal_3') as HTMLDialogElement
         const handleClose = () => {
-            if (status === "Done" && status !== realStatus) {
-                setStatus(realStatus)
-            }
+            if (status === "Done" && status !== realStatus) setStatus(realStatus)
         }
-
-        if (modal) {
-            modal.addEventListener('close', handleClose)
-        }
-
-        return () => {
-            if (modal) {
-                modal.removeEventListener('close', handleClose)
-            }
-        }
+        if (modal) modal.addEventListener('close', handleClose)
+        return () => { if (modal) modal.removeEventListener('close', handleClose) }
     }, [status, realStatus])
+
+    // ── Rendu conditionnel selon l'état de chargement ──────────────────────────
+
+    if (isLoading) {
+        return (
+            <Wrapper>
+                <div className="flex flex-col gap-4 animate-pulse">
+                    <div className="skeleton h-6 w-32 rounded" />
+                    <div className="skeleton h-8 w-64 rounded" />
+                    <div className="skeleton h-4 w-48 rounded" />
+                    <div className="skeleton h-48 w-full rounded-xl" />
+                </div>
+            </Wrapper>
+        )
+    }
+
+    if (!task) {
+        return (
+            <Wrapper>
+                <EmptyState
+                    imageSrc="/empty-task.png"
+                    imageAlt="Picture of an empty project"
+                    message="Cette tache n'existe pas"
+                />
+            </Wrapper>
+        )
+    }
+
+    // ── Rendu principal ────────────────────────────────────────────────────────
 
     return (
         <Wrapper>
-            {
-                task ? (
+            <div>
+                {/* Breadcrumb + assigné */}
+                <div className="flex flex-col md:justify-between md:flex-row">
+                    <div className="breadcrumbs text-sm">
+                        <ul>
+                            <li><Link href={`/project/${task.projectId}`}>Retour</Link></li>
+                            <li>{project?.name}</li>
+                        </ul>
+                    </div>
+                    <div className="p-5 border border-base-300 rounded-xl w-full md:w-fit my-4">
+                        <UserInfo
+                            role="Assigné a"
+                            email={task.user?.email || null}
+                            name={task.user?.name || null}
+                            imageUrl={task.user?.imageUrl || null}
+                        />
+                    </div>
+                </div>
+
+                {/* Titre */}
+                <h1 className="font-semibold italic text-2xl mb-4">{task.name}</h1>
+
+                {/* Date de livraison + sélecteur de statut */}
+                <div className="flex justify-between items-center mb-4">
+                    <span>
+                        A livré le
+                        <div className="badge badge-ghost ml-2">{task?.dueDate?.toLocaleDateString()}</div>
+                    </span>
                     <div>
-                        <div className="flex flex-col md:justify-between md:flex-row">
-                            <div className="breadcrumbs text-sm">
-                                <ul>
-                                    <li><Link href={`/project/${task?.projectId}`}>Retour</Link></li>
-                                    <li>{project?.name}</li>
-                                </ul>
-                            </div>
-                            <div className="p-5 border border-base-300 rounded-xl w-full md:w-fit my-4">
-                                <UserInfo
-                                    role="Assigné a"
-                                    email={task.user?.email || null}
-                                    name={task.user?.name || null}
-                                    imageUrl={task.user?.imageUrl || null}
-                                />
-                            </div>
+                        <label htmlFor="task-status-select" className="sr-only">Statut de la tâche</label>
+                        <select
+                            id="task-status-select"
+                            value={status}
+                            onChange={handleStatusChange}
+                            disabled={status == "Done" || task.user?.email !== email}
+                            className="select select-sm select-bordered select-primary focus:outline-none ml-3"
+                        >
+                            <option value="To Do">A faire</option>
+                            <option value="In Progress">En cours</option>
+                            <option value="Done">Terminée</option>
+                        </select>
+                    </div>
+                </div>
+
+                {/* Créateur + jours restants */}
+                <div className="mb-6">
+                    <div className="flex md:justify-between md:items-center flex-col md:flex-row">
+                        <div className="p-5 border border-base-300 rounded-xl w-full md:w-fit">
+                            <UserInfo
+                                role="Créer par"
+                                email={task.createdBy?.email || null}
+                                name={task.createdBy?.name || null}
+                                imageUrl={task.createdBy?.imageUrl || null}
+                            />
                         </div>
-
-                        <h1 className="font-semibold italic text-2xl mb-4">{task.name}</h1>
-
-                        <div className="flex justify-between items-center mb-4">
-                            <span>
-                                A livré le
-                                <div className="badge badge-ghost ml-2">{task?.dueDate?.toLocaleDateString()}</div>
-                            </span>
-                            <div>
-                                {/* Label visually hidden mais accessible aux lecteurs d'écran */}
-                                {/* Corrige : "Select elements do not have associated label" — Lighthouse Accessibility */}
-                                <label htmlFor="task-status-select" className="sr-only">
-                                    Statut de la tâche
-                                </label>
-                                <select
-                                    id="task-status-select"
-                                    value={status}
-                                    onChange={handleStatusChange}
-                                    disabled={status == "Done" || task.user?.email !== email}
-                                    className="select select-sm select-bordered select-primary focus:outline-none ml-3">
-                                    <option value="To Do">A faire</option>
-                                    <option value="In Progress">En cours</option>
-                                    <option value="Done">Terminée</option>
-                                </select>
-                            </div>
+                        <div className="badge badge-primary my-4 md:mt-0">
+                            {task.dueDate && `${Math.max(0, Math.ceil(
+                                (new Date(task.dueDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+                            ))} jours restants`}
                         </div>
+                    </div>
+                </div>
 
-                        <div className="mb-6">
-                            <div className="flex md:justify-between md:items-center flex-col md:flex-row">
+                {/* Description */}
+                <div className="ql-snow w-full">
+                    <div
+                        className="ql-editor p-5 border-base-300 border rounded-xl"
+                        dangerouslySetInnerHTML={{ __html: task.description }}
+                    />
+                </div>
 
-                                <div className="p-5 border border-base-300 rounded-xl w-full md:w-fit">
-                                    <UserInfo
-                                        role="Créer par"
-                                        email={task.createdBy?.email || null}
-                                        name={task.createdBy?.name || null}
-                                        imageUrl={task.createdBy?.imageUrl || null}
-                                    />
-                                </div>
-                                <div className="badge badge-primary my-4 md:mt-0">
-                                    {task.dueDate && `
-                                        ${Math.max(0, Math.ceil((new Date(task.dueDate).getTime() - new Date().getTime()) /
-                                        (1000 * 60 * 60 * 24)))} jours restants
-                                      `}
-                                </div>
-                            </div>
-                        </div>
-
+                {/* Solution (si tâche clôturée) */}
+                {task.solutionDescription && (
+                    <div className="mt-6">
+                        <div className="badge badge-primary mb-3">Solution</div>
                         <div className="ql-snow w-full">
                             <div
                                 className="ql-editor p-5 border-base-300 border rounded-xl"
-                                dangerouslySetInnerHTML={{ __html: task.description }}
+                                dangerouslySetInnerHTML={{ __html: task.solutionDescription }}
                             />
                         </div>
-
-                        {
-                            task?.solutionDescription && (
-                                <div>
-                                    <div className="badge badge-primary my-4">
-                                        Solution
-                                    </div>
-                                    <div className="ql-snow w-full">
-                                        <div
-                                            className="ql-editor p-5 border-base-300 border rounded-xl"
-                                            dangerouslySetInnerHTML={{ __html: task.solutionDescription }}
-                                        />
-                                    </div>
-                                </div>
-                            )
-                        }
-
-                        <dialog id="my_modal_3" className="modal">
-                            <div className="modal-box">
-                                <form method="dialog">
-                                    {/* if there is a button in form, it will close the modal */}
-                                    <button className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
-                                </form>
-                                <h3 className="font-bold text-lg">C'est quoi la solution ?</h3>
-                                <p className="py-4">Decrivez ce que vous avez fait exactemen</p>
-                                <ReactQuill
-                                    placeholder="Decrivez la solution"
-                                    value={solution}
-                                    modules={modules}
-                                    onChange={setSolution}
-                                />
-                                <button
-                                    onClick={() => closeTask(status)}
-                                    className="btn mt-4"
-                                    disabled={solution.replace(/<[^>]*>/g, '').trim() === ""}>Terminé(e)</button>
-                            </div>
-                        </dialog>
                     </div>
-                ) : (
-                    <EmptyState
-                        imageSrc="/empty-task.png"
-                        imageAlt="Picture of an empty project"
-                        message="Cette tache n'existe pas"
-                    />
                 )}
+
+                {/* Pièces jointes */}
+                {files.length > 0 && (
+                    <div className="mt-6">
+                        <div className="flex items-center gap-2 mb-3">
+                            <Paperclip className="w-4 h-4 text-base-content/60" />
+                            <span className="text-sm font-semibold text-base-content/70 uppercase tracking-wide">
+                                Pièces jointes ({files.length})
+                            </span>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            {files.map((file) => (
+                                <a
+                                    key={file.id}
+                                    href={file.blobUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-3 p-3 border border-base-300 rounded-xl hover:bg-base-200 transition-colors group"
+                                >
+                                    {file.mimeType.startsWith("image/") ? (
+                                        <ImageIcon className="w-5 h-5 text-primary shrink-0" />
+                                    ) : (
+                                        <FileText className="w-5 h-5 text-primary shrink-0" />
+                                    )}
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-medium truncate">{file.fileName}</p>
+                                        <p className="text-xs text-base-content/40">
+                                            {file.fileSize < 1024
+                                                ? `${file.fileSize} o`
+                                                : file.fileSize < 1024 * 1024
+                                                    ? `${Math.round(file.fileSize / 1024)} Ko`
+                                                    : `${(file.fileSize / (1024 * 1024)).toFixed(1)} Mo`
+                                            }
+                                        </p>
+                                    </div>
+                                    <ExternalLink className="w-4 h-4 text-base-content/30 group-hover:text-primary shrink-0 transition-colors" />
+                                </a>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Modal de clôture */}
+                <dialog id="my_modal_3" className="modal">
+                    <div className="modal-box">
+                        <form method="dialog">
+                            <button className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+                        </form>
+                        <h3 className="font-bold text-lg">C&apos;est quoi la solution ?</h3>
+                        <p className="py-4">Décrivez ce que vous avez fait exactement</p>
+                        <ReactQuill
+                            placeholder="Décrivez la solution"
+                            value={solution}
+                            modules={modules}
+                            onChange={setSolution}
+                        />
+                        <button
+                            onClick={() => closeTask(status)}
+                            className="btn btn-primary mt-4"
+                            disabled={solution.replace(/<[^>]*>/g, '').trim() === ""}
+                        >
+                            Terminé(e)
+                        </button>
+                    </div>
+                </dialog>
+            </div>
         </Wrapper>
     )
 }

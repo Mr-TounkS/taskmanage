@@ -64,7 +64,7 @@ export default function OfflineBanner() {
     return (
       <div className="w-full bg-success text-success-content px-4 py-2 flex items-center justify-center gap-2 text-sm font-medium animate-pulse">
         <Wifi size={16} />
-        Connexion rétablie — synchronisation en cours…
+        Back online — syncing pending actions…
       </div>
     );
   }
@@ -75,8 +75,7 @@ export default function OfflineBanner() {
       <div className="flex items-center gap-2">
         <WifiOff size={16} className="shrink-0" />
         <span>
-          Mode hors ligne — les données affichées correspondent à votre
-          dernière session.
+          Offline mode — showing data from your last session.
         </span>
       </div>
 
@@ -85,7 +84,7 @@ export default function OfflineBanner() {
         <div className="flex items-center gap-1 bg-warning-content/20 rounded-full px-2 py-0.5 shrink-0">
           <Clock size={13} />
           <span className="text-xs font-bold">
-            {pendingCount} action{pendingCount > 1 ? "s" : ""} en attente
+            {pendingCount} action{pendingCount > 1 ? "s" : ""} pending
           </span>
         </div>
       )}

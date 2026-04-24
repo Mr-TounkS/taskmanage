@@ -128,7 +128,7 @@ export default function SGRWidget({ projectId, refreshKey }: SGRWidgetProps) {
     <div className="p-5 border border-base-300 rounded-xl mb-6">
       {/* En-tête */}
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-semibold text-sm">Score Global de Risque</h3>
+        <h3 className="font-semibold text-sm">Global Risk Score</h3>
         <button
           onClick={chargerSGR}
           className="btn btn-ghost btn-xs"
