@@ -19,6 +19,7 @@ import { AddUserToProjectUseCase } from "@/application/use-cases/project/AddUser
 import { GetProjectsAssociatedWithUserUseCase } from "@/application/use-cases/project/GetProjectsAssociatedWithUserUseCase";
 import { GetProjectInfoUseCase } from "@/application/use-cases/project/GetProjectInfoUseCase";
 import { GetProjectUsersUseCase } from "@/application/use-cases/project/GetProjectUsersUseCase";
+import { GetTeamsOverviewUseCase } from "@/application/use-cases/project/GetTeamsOverviewUseCase";
 
 // Use Cases - WIP
 import { UpsertWIPConfigUseCase } from "@/application/use-cases/wip/UpsertWIPConfigUseCase";
@@ -117,6 +118,16 @@ export async function getProjectUser(idProject: string) {
         return await new GetProjectUsersUseCase(projectRepo).execute(idProject);
     } catch (error) {
         console.error('[getProjectUser Error]', error);
+        throw error;
+    }
+}
+
+export async function getTeamsOverview(email: string) {
+    const { projectRepo } = makeRepos();
+    try {
+        return await new GetTeamsOverviewUseCase(projectRepo).execute(email);
+    } catch (error) {
+        console.error('[getTeamsOverview Error]', error);
         throw error;
     }
 }
