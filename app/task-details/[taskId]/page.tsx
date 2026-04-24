@@ -69,7 +69,7 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
             setFiles(taskFiles as AttachedFile[])
             fetchProject(taskData.projectId)
         } catch (error) {
-            toast.error('Erreur lors du chargement des details de la tache !');
+            toast.error('Failed to load task details');
         } finally {
             setIsLoading(false)
         }
@@ -80,7 +80,7 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
             const project = await getProjectInfo(projectId, false)
             setProject(project as unknown as Project | null)
         } catch (error) {
-            toast.error('Erreur lors du chargement du projet !');
+            toast.error('Failed to load project');
         }
     }
 
@@ -98,7 +98,7 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
             await updateTaskStatus(taskId, newStatus)
             fetchInfos(taskId)
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : 'Erreur lors du changement de status')
+            toast.error(error instanceof Error ? error.message : 'Failed to update status')
         }
     }
 
@@ -125,13 +125,13 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                 await updateTaskStatus(taskId, newStatus, solution);
                 fetchInfos(taskId);
                 if (modal) modal.close();
-                toast.success('Tache cloturée');
+                toast.success('Task closed');
                 setSolution("");
             } else {
-                toast.error('Il manque une solution');
+                toast.error('Please provide a solution');
             }
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Erreur lors du changement de status");
+            toast.error(error instanceof Error ? error.message : "Failed to update status");
         }
     }
 
@@ -165,7 +165,7 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                 <EmptyState
                     imageSrc="/empty-task.png"
                     imageAlt="Picture of an empty project"
-                    message="Cette tache n'existe pas"
+                    message="This task does not exist"
                 />
             </Wrapper>
         )
@@ -180,13 +180,13 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                 <div className="flex flex-col md:justify-between md:flex-row">
                     <div className="breadcrumbs text-sm">
                         <ul>
-                            <li><Link href={`/project/${task.projectId}`}>Retour</Link></li>
+                            <li><Link href={`/project/${task.projectId}`}>Back</Link></li>
                             <li>{project?.name}</li>
                         </ul>
                     </div>
                     <div className="p-5 border border-base-300 rounded-xl w-full md:w-fit my-4">
                         <UserInfo
-                            role="Assigné a"
+                            role="Assigned to"
                             email={task.user?.email || null}
                             name={task.user?.name || null}
                             imageUrl={task.user?.imageUrl || null}
@@ -200,11 +200,11 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                 {/* Date de livraison + sélecteur de statut */}
                 <div className="flex justify-between items-center mb-4">
                     <span>
-                        A livré le
+                        Due date
                         <div className="badge badge-ghost ml-2">{task?.dueDate?.toLocaleDateString()}</div>
                     </span>
                     <div>
-                        <label htmlFor="task-status-select" className="sr-only">Statut de la tâche</label>
+                        <label htmlFor="task-status-select" className="sr-only">Task status</label>
                         <select
                             id="task-status-select"
                             value={status}
@@ -212,9 +212,9 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                             disabled={status == "Done" || task.user?.email !== email}
                             className="select select-sm select-bordered select-primary focus:outline-none ml-3"
                         >
-                            <option value="To Do">A faire</option>
-                            <option value="In Progress">En cours</option>
-                            <option value="Done">Terminée</option>
+                            <option value="To Do">To Do</option>
+                            <option value="In Progress">In Progress</option>
+                            <option value="Done">Done</option>
                         </select>
                     </div>
                 </div>
@@ -224,7 +224,7 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                     <div className="flex md:justify-between md:items-center flex-col md:flex-row">
                         <div className="p-5 border border-base-300 rounded-xl w-full md:w-fit">
                             <UserInfo
-                                role="Créer par"
+                                role="Created by"
                                 email={task.createdBy?.email || null}
                                 name={task.createdBy?.name || null}
                                 imageUrl={task.createdBy?.imageUrl || null}
@@ -233,7 +233,7 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                         <div className="badge badge-primary my-4 md:mt-0">
                             {task.dueDate && `${Math.max(0, Math.ceil(
                                 (new Date(task.dueDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
-                            ))} jours restants`}
+                            ))} days remaining`}
                         </div>
                     </div>
                 </div>
@@ -265,7 +265,7 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                         <div className="flex items-center gap-2 mb-3">
                             <Paperclip className="w-4 h-4 text-base-content/60" />
                             <span className="text-sm font-semibold text-base-content/70 uppercase tracking-wide">
-                                Pièces jointes ({files.length})
+                                Attachments ({files.length})
                             </span>
                         </div>
                         <div className="flex flex-col gap-2">
@@ -286,10 +286,10 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                                         <p className="text-sm font-medium truncate">{file.fileName}</p>
                                         <p className="text-xs text-base-content/40">
                                             {file.fileSize < 1024
-                                                ? `${file.fileSize} o`
+                                                ? `${file.fileSize} B`
                                                 : file.fileSize < 1024 * 1024
-                                                    ? `${Math.round(file.fileSize / 1024)} Ko`
-                                                    : `${(file.fileSize / (1024 * 1024)).toFixed(1)} Mo`
+                                                    ? `${Math.round(file.fileSize / 1024)} KB`
+                                                    : `${(file.fileSize / (1024 * 1024)).toFixed(1)} MB`
                                             }
                                         </p>
                                     </div>
@@ -306,10 +306,10 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                         <form method="dialog">
                             <button className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
                         </form>
-                        <h3 className="font-bold text-lg">C&apos;est quoi la solution ?</h3>
-                        <p className="py-4">Décrivez ce que vous avez fait exactement</p>
+                        <h3 className="font-bold text-lg">What is the solution?</h3>
+                        <p className="py-4">Describe what you did exactly</p>
                         <ReactQuill
-                            placeholder="Décrivez la solution"
+                            placeholder="Describe the solution"
                             value={solution}
                             modules={modules}
                             onChange={setSolution}
@@ -319,7 +319,7 @@ const page = ({ params }: { params: Promise<{ taskId: string }> }) => {
                             className="btn btn-primary mt-4"
                             disabled={solution.replace(/<[^>]*>/g, '').trim() === ""}
                         >
-                            Terminé(e)
+                            Close task
                         </button>
                     </div>
                 </dialog>
