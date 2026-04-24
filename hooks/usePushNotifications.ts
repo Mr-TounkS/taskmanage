@@ -105,8 +105,20 @@ export function usePushNotifications(): UsePushNotificationsReturn {
       // Étape 2 — Récupère le SW actif (sw.js généré par next-pwa).
       // On NE réenregistre PAS firebase-messaging-sw.js : deux SW sur le même
       // scope "/" provoquent un "push service error" (restriction Chrome par origine).
-      // sw.js gère déjà les push events via worker/index.ts fusionné dedans.
       const swRegistration = await navigator.serviceWorker.ready;
+
+      // Étape 2b — Supprime toute subscription push résiduelle sur le SW actif.
+      // Une ancienne subscription (VAPID key différente ou SW précédent) bloque
+      // pushManager.subscribe() avec "push service error". On nettoie avant de recréer.
+      try {
+        const existingSub = await swRegistration.pushManager.getSubscription();
+        if (existingSub) {
+          await existingSub.unsubscribe();
+          console.log("[FCM] Ancienne subscription push supprimée");
+        }
+      } catch {
+        // Pas bloquant — on continue
+      }
 
       // Étape 3 — Récupère le token FCM avec le SW actif
       let token: string | null = null;
@@ -116,7 +128,7 @@ export function usePushNotifications(): UsePushNotificationsReturn {
           serviceWorkerRegistration: swRegistration,
         });
       } catch (tokenErr: unknown) {
-        console.error("[FCM] Échec getToken — vérifiez NEXT_PUBLIC_FIREBASE_VAPID_KEY et le SW actif :", tokenErr);
+        console.error("[FCM] Échec getToken — vérifiez NEXT_PUBLIC_FIREBASE_VAPID_KEY sur Vercel :", tokenErr);
         setIsLoading(false);
         return;
       }
