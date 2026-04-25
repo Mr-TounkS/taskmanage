@@ -20,6 +20,7 @@ import { GetProjectsAssociatedWithUserUseCase } from "@/application/use-cases/pr
 import { GetProjectInfoUseCase } from "@/application/use-cases/project/GetProjectInfoUseCase";
 import { GetProjectUsersUseCase } from "@/application/use-cases/project/GetProjectUsersUseCase";
 import { GetTeamsOverviewUseCase } from "@/application/use-cases/project/GetTeamsOverviewUseCase";
+import { GetAnalyticsDataUseCase } from "@/application/use-cases/analytics/GetAnalyticsDataUseCase";
 
 // Use Cases - WIP
 import { UpsertWIPConfigUseCase } from "@/application/use-cases/wip/UpsertWIPConfigUseCase";
@@ -118,6 +119,16 @@ export async function getProjectUser(idProject: string) {
         return await new GetProjectUsersUseCase(projectRepo).execute(idProject);
     } catch (error) {
         console.error('[getProjectUser Error]', error);
+        throw error;
+    }
+}
+
+export async function getAnalyticsData(email: string) {
+    const { projectRepo, sgrHistoryRepo } = makeRepos();
+    try {
+        return await new GetAnalyticsDataUseCase(projectRepo, sgrHistoryRepo).execute(email);
+    } catch (error) {
+        console.error('[getAnalyticsData Error]', error);
         throw error;
     }
 }

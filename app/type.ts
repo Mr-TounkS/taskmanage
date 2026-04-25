@@ -15,6 +15,23 @@ export interface TeamMemberStats {
   progressPercentage: number
 }
 
+// ---------------------------------------------------------------------------
+// Analytics
+// ---------------------------------------------------------------------------
+
+export interface AnalyticsData {
+  // Bloc 1 — Vue globale des tâches
+  tasksByStatus:       { status: string;    count: number }[]
+  tasksByPriority:     { priority: string;  count: number }[]
+  velocityByWeek:      { week: string;      count: number }[]  // 12 dernières semaines ISO
+  completionByProject: { projectName: string; total: number; done: number; rate: number }[]
+  // Bloc 2 — SGR
+  sgrByProject:        { projectId: string; projectName: string; history: { sgr: number; niveau: string; createdAt: string }[] }[]
+  sgrLevelDistribution:{ niveau: string;    count: number }[]
+  latestSGRByProject:  { projectName: string; sgr: number; niveau: string }[]
+}
+
+// ---------------------------------------------------------------------------
 // Fusion du type PrismaProject avec vos propriétés supplémentaires
 export type Project = PrismaProject & {
   totalTasks?: number;

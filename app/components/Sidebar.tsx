@@ -66,14 +66,14 @@ const Sidebar = ({ isOpen = false, onClose }: SidebarProps) => {
 
     // Items de navigation actifs
     const activeNavItems = [
-        { href: "/", label: "Dashboard", icon: <LayoutDashboard className="w-4 h-4" /> },
-        { href: "/general-project", label: "Collaboration", icon: <Inbox className="w-4 h-4" /> },
-        { href: "/teams", label: "Teams", icon: <Users className="w-4 h-4" /> },
+        { href: "/",           label: "Dashboard",    icon: <LayoutDashboard className="w-4 h-4" /> },
+        { href: "/general-project", label: "Collaboration", icon: <Inbox    className="w-4 h-4" /> },
+        { href: "/teams",      label: "Teams",        icon: <Users           className="w-4 h-4" /> },
+        { href: "/analytics",  label: "Analytics",    icon: <BarChart2       className="w-4 h-4" /> },
     ];
 
     // Items à venir (placeholders visuels)
     const comingSoonItems = [
-        { label: "Analytics", icon: <BarChart2 className="w-4 h-4" /> },
         { label: "Settings", icon: <Settings className="w-4 h-4" /> },
     ];
 
