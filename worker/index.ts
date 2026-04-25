@@ -180,22 +180,34 @@ interface SWNotificationEvent extends Event {
   waitUntil: (p: Promise<unknown>) => void;
 }
 
-// Reçoit les données envoyées par le serveur via web-push et affiche la notification
+// Reçoit les données envoyées par FCM Admin et affiche la notification.
+// FCM envoie deux formats possibles :
+//   - Format direct  : { title, body, url, icon }
+//   - Format FCM     : { notification: { title, body, icon }, data: { url } }
 self.addEventListener("push", (event: Event) => {
   const pushEvent = event as SWPushEvent;
-  const data = pushEvent.data?.json() as PushPayload | undefined;
+  const raw = pushEvent.data?.json() as Record<string, unknown> | undefined;
 
-  if (!data) return;
+  if (!raw) return;
+
+  // Normalisation des deux formats possibles
+  const fcmNotif = raw.notification as Record<string, string> | undefined;
+  const fcmData  = raw.data as Record<string, string> | undefined;
+
+  const title = fcmNotif?.title ?? (raw as unknown as PushPayload).title ?? "TaskManage";
+  const body  = fcmNotif?.body  ?? (raw as unknown as PushPayload).body  ?? "";
+  const icon  = fcmNotif?.icon  ?? (raw as unknown as PushPayload).icon  ?? "/android/launchericon-192x192.png";
+  const url   = fcmData?.url    ?? (raw as unknown as PushPayload).url   ?? "/";
 
   const notificationOptions: NotificationOptions = {
-    body: data.body,
-    icon: data.icon ?? "/android-192x192.png",
-    badge: "/android-96x96.png",
-    data: { url: data.url ?? "/" },
+    body,
+    icon,
+    badge: "/android/launchericon-96x96.png",
+    data: { url },
   };
 
   pushEvent.waitUntil(
-    (self as unknown as SW).registration.showNotification(data.title, notificationOptions)
+    (self as unknown as SW).registration.showNotification(title, notificationOptions)
   );
 });
 

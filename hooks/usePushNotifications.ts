@@ -102,41 +102,25 @@ export function usePushNotifications(): UsePushNotificationsReturn {
         return;
       }
 
-      // Étape 2 — Nettoyer TOUS les abonnements push résiduels sur TOUTES les registrations.
-      // Cause réelle de "push service error" : un abonnement résiduel sous un ancien scope
-      // (ex: /firebase-cloud-messaging-push-scope) bloque la création d'un nouvel abonnement.
-      // Chrome restreint les abonnements push par origine — pas seulement par scope SW.
-      const allRegistrations = await navigator.serviceWorker.getRegistrations();
-      for (const reg of allRegistrations) {
-        try {
-          const sub = await reg.pushManager.getSubscription();
-          if (sub) {
-            console.log("[FCM] Abonnement push résiduel trouvé sur scope:", reg.scope, "→ suppression");
-            await sub.unsubscribe();
-          }
-        } catch {
-          // SW redondant ou inaccessible — on ignore silencieusement
+      // Étape 2 — Récupère le SW actif (sw.js généré par next-pwa).
+      // On NE réenregistre PAS firebase-messaging-sw.js : deux SW sur le même
+      // scope "/" provoquent un "push service error" (restriction Chrome par origine).
+      const swRegistration = await navigator.serviceWorker.ready;
+
+      // Étape 2b — Supprime toute subscription push résiduelle sur le SW actif.
+      // Une ancienne subscription (VAPID key différente ou SW précédent) bloque
+      // pushManager.subscribe() avec "push service error". On nettoie avant de recréer.
+      try {
+        const existingSub = await swRegistration.pushManager.getSubscription();
+        if (existingSub) {
+          await existingSub.unsubscribe();
+          console.log("[FCM] Ancienne subscription push supprimée");
         }
+      } catch {
+        // Pas bloquant — on continue
       }
 
-      // Enregistre le SW Firebase au scope racine (requis par FCM)
-      const swRegistration = await navigator.serviceWorker.register(
-        "/firebase-messaging-sw.js",
-        { scope: "/" }
-      );
-
-      // Attend que le SW soit actif avant d'appeler getToken()
-      if (!swRegistration.active) {
-        await new Promise<void>((resolve) => {
-          const sw = swRegistration.installing ?? swRegistration.waiting;
-          if (!sw) { resolve(); return; }
-          sw.addEventListener("statechange", () => {
-            if (swRegistration.active) resolve();
-          });
-        });
-      }
-
-      // Étape 3 — Récupère le token FCM (fallback sans SW si SW explicite échoue)
+      // Étape 3 — Récupère le token FCM avec le SW actif
       let token: string | null = null;
       try {
         token = await getToken(messaging, {
@@ -144,14 +128,9 @@ export function usePushNotifications(): UsePushNotificationsReturn {
           serviceWorkerRegistration: swRegistration,
         });
       } catch (tokenErr: unknown) {
-        console.warn("[FCM] Échec avec SW explicite, tentative sans SW :", tokenErr);
-        try {
-          token = await getToken(messaging, { vapidKey });
-        } catch (fallbackErr) {
-          console.error("[FCM] Échec total — vérifiez Application → Service Workers", fallbackErr);
-          setIsLoading(false);
-          return;
-        }
+        console.error("[FCM] Échec getToken — vérifiez NEXT_PUBLIC_FIREBASE_VAPID_KEY sur Vercel :", tokenErr);
+        setIsLoading(false);
+        return;
       }
 
       if (!token) {
