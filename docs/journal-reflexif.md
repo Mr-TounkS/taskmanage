@@ -358,3 +358,65 @@ prend en charge uniquement l'interactivité (toggle, filtres).
 - Question de soutenance potentielle : "Votre onglet Teams affiche la charge individuelle,
   mais elle n'entre pas dans le calcul SGR. Envisagez-vous d'intégrer un indicateur de
   risque humain dans l'algorithme, et pourquoi ne l'avez-vous pas fait ?"
+
+---
+
+## Entrée #11 — 2026-04-25
+
+### Déclencheur
+Implémentation de l'onglet Analytics (Bloc 1 + Bloc 2) — visualisation complète des
+données de tâches et d'historique SGR à travers 7 composants Recharts. Feature motivée
+par un manque de visibilité globale : les données existaient en base (SGRHistory, Task)
+mais n'étaient exploitées qu'au niveau d'un projet individuel.
+
+### Contexte technique
+- Fichiers créés :
+  - `application/use-cases/analytics/GetAnalyticsDataUseCase.ts`
+  - `app/analytics/page.tsx` — Server Component avec 4 KPIs + 2 sections
+  - `app/components/analytics/` — 7 composants Recharts (donut, bar, area, table)
+  - `__tests__/GetAnalyticsDataUseCase.test.ts` — 7 tests unitaires
+- Fichiers modifiés : `app/type.ts` (+`AnalyticsData`), `app/actions.ts`, `Sidebar.tsx`
+- Tests : 7 nouveaux tests ✅, 40 tests verts au total, 0 régression
+
+### Décision prise
+
+**Réutiliser IProjectRepository + ISGRHistoryRepository sans nouvelle requête Prisma**
+`GetAnalyticsDataUseCase` prend deux repositories en injection de dépendances.
+L'agrégation (groupBy statut, priorité, semaine ISO) est faite en mémoire dans le use case.
+Alternative rejetée : requêtes SQL agrégées (GROUP BY) — plus efficaces à grande échelle
+mais prématurées pour un contexte académique où la lisibilité et la testabilité priment.
+
+**Vélocité par semaine ISO sur 12 semaines glissantes**
+Groupement par semaine ISO (lundi→dimanche) sur 12 semaines, labels "W01"–"W52".
+Cohérent avec les pratiques Agile (sprint = 1-2 semaines). Alternative mensuelle rejetée
+car trop grossière pour détecter des ralentissements de sprint.
+
+**7 composants Recharts distincts plutôt qu'un générique**
+Chaque graphique est un composant autonome avec ses propres types et couleurs, réutilisable
+indépendamment. Chargement différé (dynamic import + ssr:false) pour éviter les erreurs
+d'hydratation et réduire le bundle initial.
+
+### Impact observé
+- Sur l'interface : 7 visualisations distinctes dans l'onglet Analytics
+- Sur la lisibilité : les courbes SGR multi-projets permettent de comparer l'évolution du
+  risque entre projets — impossible depuis les pages individuelles
+- Sur le mémoire : captures d'écran exploitables pour les sections 3.4 et 4.2
+- Sur les tests : 7 nouveaux tests couvrant nominaux et limites (0 projets, vélocité
+  cette semaine, distribution SGR)
+
+### Leçon pour le mémoire
+- Section concernée : Chapitre 3, section 3.4 (visualisation proactive) ; Chapitre 4,
+  sections 4.2 (étude de cas) et 4.3 (limites)
+- Enseignement 1 (données dormantes) : `SGRHistory` accumulait des scores depuis mars 2026
+  sans être exploitée globalement. L'onglet Analytics "réveille" ces données en les rendant
+  comparables entre projets. Une donnée non visualisée n'a pas de valeur opérationnelle —
+  argument central de la section 3.4.
+- Enseignement 2 (vélocité ≠ productivité) : Le chart de vélocité compte les tâches
+  terminées sans normalisation par complexité (story points absents). Limite documentable
+  en section 4.3 : "la vélocité brute mesure le débit, pas la valeur livrée".
+- Enseignement 3 (SGR multi-projets) : La comparaison révèle que des projets à faible WIP
+  peuvent avoir un SGR élevé à cause du Cycle Time — ce que les scores individuels masquaient.
+  Preuve que l'algorithme capture des dimensions non intuitives (section 4.2).
+- Question de soutenance potentielle : "Votre vélocité ne prend pas en compte la taille
+  des tâches. Comment justifiez-vous ce choix, et quelle serait l'extension naturelle
+  de cette métrique dans un contexte industriel ?"
