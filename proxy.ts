@@ -5,6 +5,7 @@ const isPublicRoute = createRouteMatcher([
   '/sign-in(.*)',
   '/sign-up(.*)',
   '/offline',
+  '/api/push/(.*)', // Service Worker n'a pas de session Clerk
 ])
 
 export default clerkMiddleware(async (auth, request) => {
