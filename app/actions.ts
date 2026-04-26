@@ -83,6 +83,16 @@ export async function deleteProjectById(projectId: string) {
     }
 }
 
+/** Met à jour le nom d'un projet (renommage inline depuis la page projet) */
+export async function updateProjectName(projectId: string, newName: string): Promise<void> {
+    const trimmed = newName.trim();
+    if (!trimmed) throw new Error("Project name cannot be empty");
+    await prisma.project.update({
+        where: { id: projectId },
+        data: { name: trimmed },
+    });
+}
+
 export async function addUserToProject(email: string, inviteCode: string) {
     const { userRepo, projectRepo } = makeRepos();
     try {
