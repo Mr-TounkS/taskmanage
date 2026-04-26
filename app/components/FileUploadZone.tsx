@@ -23,8 +23,8 @@ interface FileUploadZoneProps {
 
 function formatSize(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function fileIcon(mimeType: string) {
@@ -44,16 +44,16 @@ export default function FileUploadZone({ files, onChange, disabled }: FileUpload
         const toAdd: PendingFile[] = []
         for (const file of Array.from(incoming)) {
             if (files.length + toAdd.length >= MAX_FILES) {
-                setError(`Maximum ${MAX_FILES} fichiers autorisés`)
+                setError(`Maximum ${MAX_FILES} files allowed`)
                 break
             }
             if (file.size > MAX_SIZE_MB * 1024 * 1024) {
-                setError(`"${file.name}" dépasse ${MAX_SIZE_MB} Mo`)
+                setError(`"${file.name}" exceeds ${MAX_SIZE_MB} MB`)
                 continue
             }
             const ext = "." + file.name.split(".").pop()?.toLowerCase()
             if (!ACCEPTED_TYPES.includes(ext)) {
-                setError(`Type non autorisé : ${ext}`)
+                setError(`File type not supported: ${ext}`)
                 continue
             }
             const preview = file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined
@@ -72,7 +72,7 @@ export default function FileUploadZone({ files, onChange, disabled }: FileUpload
         <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2 text-xs text-base-content/60 mb-1">
                 <Paperclip className="w-3.5 h-3.5" />
-                <span>Pièces jointes (optionnel) — max {MAX_FILES} fichiers, {MAX_SIZE_MB} Mo chacun</span>
+                <span>Attachments (optional) — max {MAX_FILES} files, {MAX_SIZE_MB} MB each</span>
             </div>
 
             {/* Zone de dépôt */}
@@ -94,7 +94,7 @@ export default function FileUploadZone({ files, onChange, disabled }: FileUpload
             >
                 <Upload className="w-5 h-5 text-base-content/40" />
                 <span className="text-base-content/50 text-xs text-center">
-                    Glissez vos fichiers ici ou <span className="text-primary font-medium">cliquez pour parcourir</span>
+                    Drag & drop files here or <span className="text-primary font-medium">click to browse</span>
                 </span>
                 <span className="text-base-content/30 text-xs">
                     PDF, Word, Excel, PowerPoint, images
