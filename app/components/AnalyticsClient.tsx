@@ -6,9 +6,8 @@ import { AnalyticsData } from "@/app/type";
 // ssr: false autorisé uniquement dans un Client Component
 const TaskStatusChart      = dynamic(() => import("@/app/components/analytics/TaskStatusChart"),      { ssr: false, loading: () => <ChartSkeleton /> });
 const TaskPriorityChart    = dynamic(() => import("@/app/components/analytics/TaskPriorityChart"),    { ssr: false, loading: () => <ChartSkeleton /> });
-const VelocityChart        = dynamic(() => import("@/app/components/analytics/VelocityChart"),        { ssr: false, loading: () => <ChartSkeleton /> });
-const CompletionRateChart  = dynamic(() => import("@/app/components/analytics/CompletionRateChart"),  { ssr: false, loading: () => <ChartSkeleton /> });
 const ThroughputChart      = dynamic(() => import("@/app/components/analytics/ThroughputChart"),      { ssr: false, loading: () => <ChartSkeleton /> });
+const CompletionRateChart  = dynamic(() => import("@/app/components/analytics/CompletionRateChart"),  { ssr: false, loading: () => <ChartSkeleton /> });
 const CycleTimeChart       = dynamic(() => import("@/app/components/analytics/CycleTimeChart"),       { ssr: false, loading: () => <ChartSkeleton /> });
 const SGRLevelDistribution = dynamic(() => import("@/app/components/analytics/SGRLevelDistribution"), { ssr: false, loading: () => <ChartSkeleton /> });
 const SGRScoreTable        = dynamic(() => import("@/app/components/analytics/SGRScoreTable"),        { ssr: false });
@@ -31,8 +30,8 @@ export default function AnalyticsClient({ data }: AnalyticsClientProps) {
           <ChartCard title="By priority">
             <TaskPriorityChart data={data.tasksByPriority} />
           </ChartCard>
-          <ChartCard title="Velocity — tasks completed per week (last 12 weeks)">
-            <VelocityChart data={data.velocityByWeek} />
+          <ChartCard title="Débit">
+            <ThroughputChart data={data.velocityByWeek} stats={data.throughputStats} />
           </ChartCard>
           <ChartCard title="Completion rate by project">
             <CompletionRateChart data={data.completionByProject} />
@@ -43,10 +42,7 @@ export default function AnalyticsClient({ data }: AnalyticsClientProps) {
       {/* ── Bloc 2 : SGR ── */}
       <Section title="Risk Score (SGR)" subtitle="Evolution and distribution of the Global Risk Score">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <ChartCard title="Débit">
-            <ThroughputChart data={data.velocityByWeek} stats={data.throughputStats} />
-          </ChartCard>
-          <ChartCard title="Niveau de service attendu">
+          <ChartCard title="Niveau de service attendu" className="md:col-span-2">
             <CycleTimeChart points={data.cycleTimePoints} sleDays={data.sleDays} sle85Change={data.sle85Change} />
           </ChartCard>
           <ChartCard title="Risk level distribution">
