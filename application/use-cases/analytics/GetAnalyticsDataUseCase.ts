@@ -95,11 +95,20 @@ export class GetAnalyticsDataUseCase {
       count:  sgrLevelMap.get(n) ?? 0,
     }));
 
+    // ── Bloc 2 : métriques de flux Kanban ───────────────────────────────────
+    const throughputStats  = this.computeThroughputStats(velocityByWeek);
+    const cycleTimePoints  = this.computeCycleTimePoints(allTasks);
+    const { sleDays, sle85Change } = this.computeSLE(allTasks);
+
     return {
       tasksByStatus,
       tasksByPriority,
       velocityByWeek,
       completionByProject,
+      throughputStats,
+      cycleTimePoints,
+      sleDays,
+      sle85Change,
       sgrByProject,
       sgrLevelDistribution,
       latestSGRByProject,
@@ -107,6 +116,78 @@ export class GetAnalyticsDataUseCase {
   }
 
   // ── Helpers privés ────────────────────────────────────────────────────────
+
+  /**
+   * Calcule le débit moyen (4 dernières semaines) et la variation vs 4 semaines précédentes.
+   */
+  private computeThroughputStats(velocity: { week: string; count: number }[]): { avgPerWeek: number; changePercent: number } {
+    const last4 = velocity.slice(-4).map(d => d.count);
+    const prev4 = velocity.slice(-8, -4).map(d => d.count);
+    const avgLast = last4.reduce((a, b) => a + b, 0) / Math.max(last4.length, 1);
+    const avgPrev = prev4.reduce((a, b) => a + b, 0) / Math.max(prev4.length, 1);
+    const changePercent = avgPrev > 0 ? Math.round((avgLast - avgPrev) / avgPrev * 100) : 0;
+    return { avgPerWeek: Math.round(avgLast), changePercent };
+  }
+
+  /**
+   * Retourne les points de Cycle Time (completedAt − startedAt en jours)
+   * pour toutes les tâches terminées ayant les deux horodatages.
+   * Triés par date de livraison croissante.
+   */
+  private computeCycleTimePoints(
+    tasks: { status: string; startedAt: Date | null; completedAt: Date | null }[]
+  ): { date: string; cycleTimeDays: number }[] {
+    return tasks
+      .filter(t => t.status === 'Done' && t.startedAt !== null && t.completedAt !== null)
+      .map(t => ({
+        date: new Date(t.completedAt!).toISOString(),
+        cycleTimeDays: Math.max(
+          0,
+          Math.round((new Date(t.completedAt!).getTime() - new Date(t.startedAt!).getTime()) / 86_400_000)
+        ),
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  /**
+   * Calcule le SLE (85e centile du Cycle Time) sur les 30 derniers jours
+   * et la variation par rapport aux 30 jours précédents.
+   */
+  private computeSLE(
+    tasks: { status: string; startedAt: Date | null; completedAt: Date | null }[]
+  ): { sleDays: number; sle85Change: number } {
+    const now        = Date.now();
+    const MS_30_DAYS = 30 * 86_400_000;
+
+    const ctOf = (period: { from: number; to: number }) =>
+      tasks
+        .filter(t =>
+          t.status === 'Done' &&
+          t.startedAt !== null &&
+          t.completedAt !== null &&
+          new Date(t.completedAt!).getTime() >= period.from &&
+          new Date(t.completedAt!).getTime() <= period.to
+        )
+        .map(t =>
+          Math.max(0, (new Date(t.completedAt!).getTime() - new Date(t.startedAt!).getTime()) / 86_400_000)
+        );
+
+    const current  = ctOf({ from: now - MS_30_DAYS, to: now });
+    const previous = ctOf({ from: now - 2 * MS_30_DAYS, to: now - MS_30_DAYS });
+
+    const sle85 = (values: number[]) => {
+      if (values.length === 0) return 0;
+      const sorted = [...values].sort((a, b) => a - b);
+      const idx    = Math.ceil(sorted.length * 0.85) - 1;
+      return Math.round(sorted[Math.max(0, idx)]);
+    };
+
+    const sleDays    = sle85(current);
+    const prevSLE    = sle85(previous);
+    const sle85Change = prevSLE > 0 ? Math.round((sleDays - prevSLE) / prevSLE * 100) : 0;
+
+    return { sleDays, sle85Change };
+  }
 
   /**
    * Groupe les tâches terminées par semaine ISO sur les 12 dernières semaines.

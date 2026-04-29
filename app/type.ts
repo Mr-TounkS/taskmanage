@@ -25,7 +25,12 @@ export interface AnalyticsData {
   tasksByPriority:     { priority: string;  count: number }[]
   velocityByWeek:      { week: string;      count: number }[]  // 12 dernières semaines ISO
   completionByProject: { projectName: string; total: number; done: number; rate: number }[]
-  // Bloc 2 — SGR
+  // Bloc 2 — Métriques de flux Kanban
+  throughputStats:     { avgPerWeek: number; changePercent: number }
+  cycleTimePoints:     { date: string; cycleTimeDays: number }[]
+  sleDays:             number   // 85e centile du Cycle Time (jours)
+  sle85Change:         number   // variation du SLE vs période précédente (%)
+  // Bloc 3 — SGR
   sgrByProject:        { projectId: string; projectName: string; history: { sgr: number; niveau: string; createdAt: string }[] }[]
   sgrLevelDistribution:{ niveau: string;    count: number }[]
   latestSGRByProject:  { projectName: string; sgr: number; niveau: string }[]
