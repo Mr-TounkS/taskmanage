@@ -36,7 +36,7 @@ export default function ThroughputChart({ data, stats }: ThroughputChartProps) {
     <div className="space-y-1">
       {/* En-tête */}
       <div>
-        <p className="text-2xl font-bold">{stats.avgPerWeek} <span className="text-sm font-normal text-base-content/60">items complétés / semaine</span></p>
+        <p className="text-2xl font-bold">{stats.avgPerWeek} <span className="text-sm font-normal text-base-content/60">items completed / week</span></p>
         <p className={`text-sm font-semibold ${isPositive ? "text-success" : "text-error"}`}>
           {isPositive ? "+" : ""}{stats.changePercent} %
         </p>
@@ -64,7 +64,7 @@ export default function ThroughputChart({ data, stats }: ThroughputChartProps) {
           <Area
             type="monotone"
             dataKey="count"
-            name="Items complétés"
+            name="Completed items"
             stroke="#38bdf8"
             strokeWidth={2}
             fill="url(#throughput-gradient)"
@@ -74,7 +74,7 @@ export default function ThroughputChart({ data, stats }: ThroughputChartProps) {
           <Line
             type="monotone"
             dataKey="trend"
-            name="Tendance"
+            name="Trend"
             stroke="#ef4444"
             strokeWidth={1.5}
             strokeDasharray="5 4"

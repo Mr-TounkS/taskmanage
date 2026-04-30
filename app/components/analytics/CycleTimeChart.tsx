@@ -12,9 +12,9 @@ interface CycleTimeChartProps {
   sle85Change: number
 }
 
-/** Formate un timestamp en "5 juin", "10 mars", etc. */
+/** Formats a timestamp as "Jun 5", "Mar 10", etc. */
 function formatDate(isoDate: string): string {
-  return new Date(isoDate).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+  return new Date(isoDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }
 
 /** Scatter plot — Cycle Time par tâche avec ligne du SLE au 85e centile */
@@ -39,9 +39,9 @@ export default function CycleTimeChart({ points, sleDays, sle85Change }: CycleTi
       {/* En-tête */}
       <div>
         <p className="text-2xl font-bold">
-          {sleDays} j{" "}
+          {sleDays} d{" "}
           <span className="text-sm font-normal text-base-content/60">
-            85% des items finissent en {sleDays} jours ou moins
+            85% of items are done in {sleDays} days or less
           </span>
         </p>
         <p className={`text-sm font-semibold ${isPositive ? "text-error" : "text-success"}`}>
@@ -76,7 +76,7 @@ export default function CycleTimeChart({ points, sleDays, sle85Change }: CycleTi
             tick={{ fontSize: 9, fill: "#9ca3af" }}
             tickLine={false}
             axisLine={false}
-            tickFormatter={(v: number) => `${v}j`}
+            tickFormatter={(v: number) => `${v}d`}
             allowDecimals={false}
           />
           <Tooltip
@@ -88,7 +88,7 @@ export default function CycleTimeChart({ points, sleDays, sle85Change }: CycleTi
               return (
                 <div className="bg-base-100 border border-base-300 rounded-lg p-2 text-xs shadow">
                   <p className="font-semibold">{formatDate(new Date(x).toISOString())}</p>
-                  <p className="text-base-content/70">{y} jour(s) de cycle</p>
+                  <p className="text-base-content/70">{y} day(s) cycle time</p>
                 </div>
               );
             }}
@@ -101,11 +101,11 @@ export default function CycleTimeChart({ points, sleDays, sle85Change }: CycleTi
               <div className="flex gap-4 justify-center text-xs mt-1">
                 <span className="flex items-center gap-1">
                   <span className="inline-block w-3 h-3 rounded-full bg-sky-400" />
-                  Temps de cycle
+                  Cycle time
                 </span>
                 <span className="flex items-center gap-1">
                   <span className="inline-block w-5 border-t-2 border-dashed border-violet-500" />
-                  Percentile 85e
+                  85th percentile
                 </span>
               </div>
             )}
@@ -119,7 +119,7 @@ export default function CycleTimeChart({ points, sleDays, sle85Change }: CycleTi
             label={{ value: "85e", position: "right", fill: "#8b5cf6", fontSize: 10 }}
           />
           <Scatter
-            name="Temps de cycle"
+            name="Cycle time"
             data={chartData}
             fill="#38bdf8"
             opacity={0.75}

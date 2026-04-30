@@ -30,7 +30,7 @@ export default function AnalyticsClient({ data }: AnalyticsClientProps) {
           <ChartCard title="By priority">
             <TaskPriorityChart data={data.tasksByPriority} />
           </ChartCard>
-          <ChartCard title="Débit">
+          <ChartCard title="Throughput">
             <ThroughputChart data={data.velocityByWeek} stats={data.throughputStats} />
           </ChartCard>
           <ChartCard title="Completion rate by project">
@@ -42,7 +42,7 @@ export default function AnalyticsClient({ data }: AnalyticsClientProps) {
       {/* ── Bloc 2 : SGR ── */}
       <Section title="Risk Score (SGR)" subtitle="Evolution and distribution of the Global Risk Score">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <ChartCard title="Niveau de service attendu" className="md:col-span-2">
+          <ChartCard title="Service Level Expectation (SLE)" className="md:col-span-2">
             <CycleTimeChart points={data.cycleTimePoints} sleDays={data.sleDays} sle85Change={data.sle85Change} />
           </ChartCard>
           <ChartCard title="Risk level distribution">
