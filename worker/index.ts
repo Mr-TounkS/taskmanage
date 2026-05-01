@@ -181,23 +181,39 @@ interface SWNotificationEvent extends Event {
 }
 
 // Reçoit les données envoyées par FCM Admin et affiche la notification.
-// FCM envoie deux formats possibles :
+// FCM envoie trois formats possibles :
 //   - Format direct  : { title, body, url, icon }
 //   - Format FCM     : { notification: { title, body, icon }, data: { url } }
+//   - Format FCM v1  : { notification: { title, body }, webpush: { notification: { icon }, fcm_options: { link } } }
 self.addEventListener("push", (event: Event) => {
   const pushEvent = event as SWPushEvent;
   const raw = pushEvent.data?.json() as Record<string, unknown> | undefined;
 
-  if (!raw) return;
+  // FCM peut livrer sans données si la notification est de type "display" — fallback par défaut
+  if (!raw) {
+    pushEvent.waitUntil(
+      (self as unknown as SW).registration.showNotification("TaskManage", {
+        body:  "Nouvelle alerte SGR",
+        icon:  "/android/launchericon-192x192.png",
+        badge: "/android/launchericon-96x96.png",
+        data:  { url: "/" },
+      })
+    );
+    return;
+  }
 
-  // Normalisation des deux formats possibles
-  const fcmNotif = raw.notification as Record<string, string> | undefined;
-  const fcmData  = raw.data as Record<string, string> | undefined;
+  // Normalisation des formats FCM
+  const fcmNotif   = raw.notification as Record<string, string> | undefined;
+  const fcmData    = raw.data as Record<string, string> | undefined;
+  const fcmWebpush = raw.webpush as Record<string, unknown> | undefined;
+  // fcm_options (snake_case wire format) ou fcmOptions (camelCase Admin SDK)
+  const fcmOptions = (fcmWebpush?.fcm_options ?? fcmWebpush?.fcmOptions) as Record<string, string> | undefined;
+  const fcmWebNotif = fcmWebpush?.notification as Record<string, string> | undefined;
 
   const title = fcmNotif?.title ?? (raw as unknown as PushPayload).title ?? "TaskManage";
   const body  = fcmNotif?.body  ?? (raw as unknown as PushPayload).body  ?? "";
-  const icon  = fcmNotif?.icon  ?? (raw as unknown as PushPayload).icon  ?? "/android/launchericon-192x192.png";
-  const url   = fcmData?.url    ?? (raw as unknown as PushPayload).url   ?? "/";
+  const icon  = fcmWebNotif?.icon ?? fcmNotif?.icon ?? (raw as unknown as PushPayload).icon ?? "/android/launchericon-192x192.png";
+  const url   = fcmOptions?.link ?? fcmData?.url ?? (raw as unknown as PushPayload).url ?? "/";
 
   const notificationOptions: NotificationOptions = {
     body,

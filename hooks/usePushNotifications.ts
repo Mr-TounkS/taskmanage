@@ -68,7 +68,15 @@ export function usePushNotifications(): UsePushNotificationsReturn {
 
     const unsubscribeMessage = onMessage(messaging, (payload) => {
       console.log("[FCM] Notification reçue en premier plan :", payload);
-      // Les alertes en premier plan sont gérées par les toasts SGR automatiques
+      // Affiche une notification native quand l'app est ouverte (le SW ne le fait pas en foreground)
+      const title = payload.notification?.title ?? "TaskManage";
+      const body  = payload.notification?.body  ?? "";
+      if (Notification.permission === "granted" && body) {
+        new Notification(title, {
+          body,
+          icon: "/android/launchericon-192x192.png",
+        });
+      }
     });
 
     return () => unsubscribeMessage();

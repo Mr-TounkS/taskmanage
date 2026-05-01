@@ -6,7 +6,7 @@ const withPWA = withPWAInit({
   register: true,              // Automatically register the SW on load
   reloadOnOnline: true,        // Reload the page when connection is restored
   cacheOnFrontEndNav: true,    // Cache client-side navigations
-  disable: process.env.NODE_ENV === "development", // Disabled in dev mode
+  disable: process.env.NODE_ENV === "development" && !process.env.ENABLE_SW_DEV, // Désactiver en dev sauf si ENABLE_SW_DEV=1
   customWorkerSrc: "worker",   // Merges worker/index.ts into the generated SW (Background Sync)
   fallbacks: {
     // Page served when the requested resource is not cached and the user is offline
