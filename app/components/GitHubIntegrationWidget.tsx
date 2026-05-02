@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Github, Copy, Check, RefreshCw, Save, Trash2, ExternalLink } from "lucide-react";
+import { GitBranch, Copy, Check, RefreshCw, Save, Trash2, ExternalLink, AlertTriangle } from "lucide-react";
 import { saveGitHubIntegration, getGitHubIntegration, deleteGitHubIntegration } from "@/app/actions";
 import { toast } from "react-toastify";
 
@@ -53,9 +53,11 @@ export default function GitHubIntegrationWidget({
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [copiedSecret, setCopiedSecret] = useState(false);
 
-  const webhookUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/api/webhooks/github?projectId=${projectId}`
-    : '';
+  // Utilise l'URL de production si définie — localhost n'est pas joignable par GitHub
+  const appOrigin = process.env.NEXT_PUBLIC_APP_URL
+    ?? (typeof window !== 'undefined' ? window.location.origin : '');
+  const webhookUrl = `${appOrigin}/api/webhooks/github?projectId=${projectId}`;
+  const isLocalhost = appOrigin.includes('localhost') || appOrigin.includes('127.0.0.1');
 
   // Chargement de la configuration existante
   useEffect(() => {
@@ -141,7 +143,7 @@ export default function GitHubIntegrationWidget({
       {/* En-tête */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <Github className="w-4 h-4" />
+          <GitBranch className="w-4 h-4" />
           <h3 className="font-semibold text-sm">GitHub Webhook</h3>
         </div>
         <span className={`badge badge-sm ${estConnecte ? 'badge-success' : 'badge-ghost'}`}>
@@ -153,6 +155,18 @@ export default function GitHubIntegrationWidget({
         Connects your GitHub repository to automatically update the SGR score
         on each pull request and Codacy analysis.
       </p>
+
+      {/* Avertissement localhost */}
+      {isLocalhost && (
+        <div className="alert alert-warning py-2 px-3 mb-4 text-xs">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <span>
+            You are in dev mode (<span className="font-mono">localhost</span>).
+            The URL below points to <span className="font-mono">taskmanage-mu.vercel.app</span> — GitHub requires a public URL.
+            Deploy first, then configure the webhook.
+          </span>
+        </div>
+      )}
 
       {/* Champ dépôt */}
       <div className="form-control mb-3">
