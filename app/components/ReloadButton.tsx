@@ -64,15 +64,14 @@ export default function ReloadButton() {
         disabled={isRetrying}
       >
         <RefreshCw size={16} className={isRetrying ? "animate-spin" : ""} />
-        {isRetrying ? "Vérification..." : "Réessayer"}
+        {isRetrying ? "Checking..." : "Retry"}
       </button>
 
-      {/* Indicateur d'état de connexion en temps réel */}
       <span className={`text-xs flex items-center gap-1 ${isOnline ? "text-success" : "text-warning"}`}>
         {isOnline ? (
-          <><Wifi size={12} /> Connexion rétablie, redirection...</>
+          <><Wifi size={12} /> Connection restored, redirecting...</>
         ) : (
-          <><WifiOff size={12} /> En attente de connexion...</>
+          <><WifiOff size={12} /> Waiting for connection...</>
         )}
       </span>
     </div>

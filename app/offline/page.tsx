@@ -1,6 +1,6 @@
-// Page de fallback hors ligne — affichée par le Service Worker quand
-// la page demandée n'est pas disponible dans le cache et que l'utilisateur est hors ligne.
-// Répond à la sous-question SQ2 : disponibilité hors ligne des équipes Agile distribuées.
+// Offline fallback page — displayed by the Service Worker when
+// the requested page is not available in cache and the user is offline.
+// Addresses sub-question SQ2: offline availability for distributed Agile teams.
 
 import type { Metadata } from "next";
 import { WifiOff, CheckCircle, XCircle } from "lucide-react";
@@ -8,24 +8,22 @@ import ReloadButton from "../components/ReloadButton";
 import BackButton from "../components/BackButton";
 
 export const metadata: Metadata = {
-  title: "Hors ligne — Task Manage",
-  description: "Vous êtes actuellement hors ligne.",
+  title: "Offline — Task Manage",
+  description: "You are currently offline.",
 };
 
-// Fonctionnalités disponibles sans connexion (pages précachées par le SW)
-const DISPONIBLE_OFFLINE = [
-  "Consulter vos projets récemment visités",
-  "Voir les tâches en cours de vos tableaux Kanban",
-  "Lire les détails de vos tâches",
-  "Consulter votre dernier score SGR calculé",
+const AVAILABLE_OFFLINE = [
+  "Browse your recently visited projects",
+  "View tasks in your Kanban boards",
+  "Read your task details",
+  "Check your last calculated SGR score",
 ];
 
-// Fonctionnalités nécessitant une connexion active
-const NECESSITE_CONNEXION = [
-  "Créer ou modifier des tâches",
-  "Recalculer le score SGR",
-  "Inviter des collaborateurs",
-  "Synchroniser les données GitHub / SonarQube",
+const REQUIRES_CONNECTION = [
+  "Create or edit tasks",
+  "Recalculate the SGR score",
+  "Invite collaborators",
+  "Sync GitHub / SonarQube data",
 ];
 
 export default function OfflinePage() {
@@ -34,7 +32,6 @@ export default function OfflinePage() {
       <BackButton />
       <div className="max-w-lg w-full">
 
-        {/* En-tête */}
         <div className="card bg-base-100 shadow-xl">
           <div className="card-body items-center text-center gap-4">
 
@@ -42,31 +39,27 @@ export default function OfflinePage() {
               <WifiOff size={48} className="text-warning" />
             </div>
 
-            <h1 className="card-title text-2xl">Vous êtes hors ligne</h1>
+            <h1 className="card-title text-2xl">You are offline</h1>
             <p className="text-base-content/70">
-              Task Manage fonctionne partiellement sans connexion grâce au
-              cache du Service Worker. Les données affichées correspondent
-              à votre dernière session en ligne.
+              Task Manage works partially without a connection thanks to the
+              Service Worker cache. The data shown reflects your last online
+              session.
             </p>
 
-            {/* Bouton réessayer — le reloadOnOnline dans next.config.ts
-                recharge automatiquement dès que la connexion revient */}
             <ReloadButton />
           </div>
         </div>
 
-        {/* Disponibilité des fonctionnalités */}
         <div className="grid grid-cols-1 gap-4 mt-4 sm:grid-cols-2">
 
-          {/* Fonctionnalités disponibles */}
           <div className="card bg-success/10 shadow">
             <div className="card-body gap-3">
               <h2 className="font-semibold text-success flex items-center gap-2">
                 <CheckCircle size={18} />
-                Disponible hors ligne
+                Available offline
               </h2>
               <ul className="space-y-2">
-                {DISPONIBLE_OFFLINE.map((item) => (
+                {AVAILABLE_OFFLINE.map((item) => (
                   <li key={item} className="text-sm text-base-content/80 flex items-start gap-2">
                     <span className="text-success mt-0.5">✓</span>
                     {item}
@@ -76,15 +69,14 @@ export default function OfflinePage() {
             </div>
           </div>
 
-          {/* Fonctionnalités indisponibles */}
           <div className="card bg-error/10 shadow">
             <div className="card-body gap-3">
               <h2 className="font-semibold text-error flex items-center gap-2">
                 <XCircle size={18} />
-                Nécessite une connexion
+                Requires a connection
               </h2>
               <ul className="space-y-2">
-                {NECESSITE_CONNEXION.map((item) => (
+                {REQUIRES_CONNECTION.map((item) => (
                   <li key={item} className="text-sm text-base-content/80 flex items-start gap-2">
                     <span className="text-error mt-0.5">✗</span>
                     {item}
@@ -95,9 +87,8 @@ export default function OfflinePage() {
           </div>
         </div>
 
-        {/* Indicateur de statut */}
         <p className="text-center text-xs text-base-content/40 mt-4">
-          La page se rechargera automatiquement dès que la connexion sera rétablie.
+          The page will reload automatically once the connection is restored.
         </p>
 
       </div>

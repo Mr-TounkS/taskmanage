@@ -10,8 +10,8 @@ export default function BackButton() {
     <button
       onClick={() => router.back()}
       className="absolute top-4 left-4 btn btn-ghost btn-sm btn-circle"
-      title="Retour à la page précédente"
-      aria-label="Retour"
+      title="Back to previous page"
+      aria-label="Back"
     >
       <ArrowLeft size={20} />
     </button>
