@@ -5,6 +5,7 @@ const isPublicRoute = createRouteMatcher([
   '/sign-in(.*)',
   '/sign-up(.*)',
   '/offline',
+  '/api/webhooks/(.*)', // Webhooks GitHub — appelés par des services externes, pas par des utilisateurs
 ])
 
 export default clerkMiddleware(async (auth, request) => {
