@@ -5,6 +5,7 @@
 import type { Metadata } from "next";
 import { WifiOff, CheckCircle, XCircle } from "lucide-react";
 import ReloadButton from "../components/ReloadButton";
+import BackButton from "../components/BackButton";
 
 export const metadata: Metadata = {
   title: "Hors ligne — Task Manage",
@@ -29,7 +30,8 @@ const NECESSITE_CONNEXION = [
 
 export default function OfflinePage() {
   return (
-    <div className="min-h-screen bg-base-200 flex items-center justify-center p-4">
+    <div className="relative min-h-screen bg-base-200 flex items-center justify-center p-4">
+      <BackButton />
       <div className="max-w-lg w-full">
 
         {/* En-tête */}
