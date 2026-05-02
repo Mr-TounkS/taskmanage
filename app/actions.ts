@@ -432,6 +432,38 @@ export const uploadTaskFile = async (taskId: string, formData: FormData) => {
     }
 };
 
+// ---------------------------------------------------------------------------
+// Intégration GitHub — configuration webhook par projet
+// ---------------------------------------------------------------------------
+
+import { PrismaExternalIntegrationRepository } from "@/infrastructure/repositories/PrismaExternalIntegrationRepository";
+
+/** Enregistre ou met à jour la configuration GitHub d'un projet */
+export async function saveGitHubIntegration(
+    projectId: string,
+    repoFullName: string,
+    webhookSecret: string,
+) {
+    if (!repoFullName.match(/^[\w.-]+\/[\w.-]+$/)) {
+        throw new Error("Format invalide — utiliser owner/repo (ex: vercel/next.js)");
+    }
+    const repo = new PrismaExternalIntegrationRepository(prisma);
+    return repo.upsert({ projectId, type: 'github', externalProjectRef: repoFullName, webhookSecret });
+}
+
+/** Récupère la configuration GitHub existante d'un projet (null si absente) */
+export async function getGitHubIntegration(projectId: string) {
+    const repo = new PrismaExternalIntegrationRepository(prisma);
+    return repo.findByProjectAndType(projectId, 'github');
+}
+
+/** Supprime l'intégration GitHub d'un projet */
+export async function deleteGitHubIntegration(projectId: string) {
+    const repo = new PrismaExternalIntegrationRepository(prisma);
+    const integration = await repo.findByProjectAndType(projectId, 'github');
+    if (integration) await repo.delete(integration.id);
+}
+
 // Suppression de fichier
 export const deleteTaskFile = async (fileId: string) => {
     const { del } = await import('@vercel/blob');
