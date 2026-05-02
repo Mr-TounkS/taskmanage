@@ -27,7 +27,7 @@ const WIPConfigWidget = dynamic(() => import("@/app/components/WIPConfigWidget")
 import Wrapper from "@/app/components/Wrapper";
 import { Project } from "@/app/type";
 import { useUser } from "@clerk/nextjs";
-import { Calendar, Check, CircleCheckBig, CopyPlus, Files, Kanban, List, ListTodo, Loader, Pencil, Settings, Share2, SlidersHorizontal, UserCheck, X } from "lucide-react";
+import { Calendar, Check, CircleCheckBig, CopyPlus, Files, Kanban, List, ListTodo, Loader, Pencil, Settings, SlidersHorizontal, UserCheck, X } from "lucide-react";
 import Link from "next/link";
 import React, { useEffect, useState } from "react";
 import { toast } from "react-toastify";
@@ -244,17 +244,12 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                     )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                    {/* Partager + Automation masqués sur très petits écrans */}
-                    <button className="hidden sm:flex btn btn-outline btn-sm gap-1.5 opacity-50 cursor-not-allowed" disabled title="Coming soon">
-                        <Share2 className="w-3.5 h-3.5" />
-                        Share
-                    </button>
                     <Link
                         href={`/project/${projectId}/settings`}
-                        className="hidden sm:flex btn btn-outline btn-sm gap-1.5"
+                        className="hidden sm:flex btn btn-primary btn-sm gap-1.5"
                         title="Project settings"
                     >
-                        <Settings className="w-3.5 h-3.5" />
+                        <Settings className="w-4 h-4" />
                         Automation
                     </Link>
                     <Link href={`/new-tasks/${projectId}`} className="btn btn-primary btn-sm gap-1.5">
