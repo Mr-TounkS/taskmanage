@@ -135,23 +135,41 @@ L'historique du SGR est récupéré via l'Action serveur `getSGRHistory()`, qui 
 
 La conception initiale prévoyait SonarQube comme source des métriques de qualité logicielle, via des webhooks sortants déclenchés après chaque analyse. Cette approche s'est révélée incompatible avec les contraintes budgétaires du projet : SonarCloud conditionne l'envoi de webhooks sortants à un abonnement payant. Nous avons retenu Codacy comme alternative, dont l'interface de programmation REST v3 est accessible sans frais sur les dépôts publics.
 
-Le module `lib/codacy-api.ts` expose une fonction `fetchCodacyMetrics()` qui effectue deux requêtes parallèles vers l'interface Codacy : une requête sans filtre pour le nombre total de problèmes détectés, et une requête filtrée sur le niveau "Error" pour les bogues critiques.
+Le module `lib/codacy-api.ts` expose une fonction `fetchCodacyMetrics()` qui effectue deux requêtes parallèles vers l'interface Codacy : une requête sans filtre pour le nombre total de problèmes détectés, et une requête filtrée sur le niveau "Error" pour les bogues critiques. Les données collectées sont transformées en objet `SGRTechDebt` selon les règles suivantes : les bogues bloquants correspondent aux problèmes de niveau "Error", les problèmes de qualité correspondent à la différence entre le total et les bogues bloquants, et la dette technique en jours est estimée à raison de 30 minutes par problème.
+
+La résolution du point d'accès `/issues/search` a nécessité une correction en cours de développement. Le point d'accès `/repository-quality` initialement testé retournait une erreur 404 non documentée. L'incident a été résolu en consultant directement les collections Postman de l'interface Codacy v3, épisode documenté dans le journal réflexif.
 
 **Figure 3.9 — Diagramme de séquence : récupération des métriques Codacy (UML 2.5)**
 
 [📊 DIAGRAMME DE SÉQUENCE : acteurs `SGRWidget` → `getProjectSGR` (action serveur) → `CalculateSGRUseCase` → `CodacyClient` → API Codacy (deux requêtes parallèles `par`) → agrégation → `calculateSGR()` → retour. Cadre `opt [codacy.ok]` autour des appels Codacy pour montrer que le calcul se poursuit même en cas d'échec.]
 
-**Pourquoi ce diagramme.** Il matérialise une décision architecturale clé : l'intégration Codacy est *optionnelle* et *non bloquante*. Si l'interface Codacy est indisponible ou renvoie une erreur, le SGR est tout de même calculé — R_Tech prend simplement la valeur zéro. **Lien avec le SGR :** cette résilience est conforme au principe de dégradation gracieuse énoncé en section 2.4. L'équipe continue à voir son score de risque même quand une source externe tombe, ce qui évite que le SGR devienne lui-même un point de fragilité.
+**Pourquoi ce diagramme.** Il matérialise une décision architecturale clé : l'intégration Codacy est *optionnelle* et *non bloquante*. Si l'interface Codacy est indisponible ou renvoie une erreur, le SGR est tout de même calculé — R_qual prend simplement la valeur zéro. **Lien avec le SGR :** cette résilience est conforme au principe de dégradation gracieuse énoncé en section 2.4. L'équipe continue à voir son score de risque même quand une source externe tombe, ce qui évite que le SGR devienne lui-même un point de fragilité.
 
-Les données collectées sont transformées en objet `SGRTechDebt` selon les règles suivantes : les bogues bloquants correspondent aux problèmes de niveau "Error", les problèmes de qualité correspondent à la différence entre le total et les bogues bloquants, et la dette technique en jours est estimée à raison de 30 minutes par problème.
+### 3.4.2 Intégration GitHub par webhook événementiel
 
-La résolution du point d'accès `/issues/search` a nécessité une correction en cours de développement. Le point d'accès `/repository-quality` initialement testé retournait une erreur 404 non documentée. L'incident a été résolu en consultant directement les collections Postman de l'interface Codacy v3, épisode documenté dans le journal réflexif.
+L'indicateur R_dev du modèle SGR est alimenté par des métriques d'activité GitHub : nombre de demandes de fusion ouvertes, délai moyen entre ouverture et intégration, et proportion de demandes sans activité depuis plus de sept jours. Contrairement à une interrogation périodique de l'interface REST GitHub, nous avons retenu une architecture événementielle fondée sur les webhooks : GitHub notifie activement l'application à chaque événement pertinent, ce qui élimine le coût d'un mécanisme d'interrogation et garantit que le recalcul du SGR est déclenché au moment où l'information est produite.
 
-### 3.4.2 Perspectives d'intégration GitHub
+**Architecture du point de terminaison webhook.** La route `POST /api/webhooks/github` reçoit les événements entrants. Deux types d'événements sont traités : `pull_request`, qui met à jour l'indicateur R_dev, et `check_run`, qui intercepte les analyses Codacy transmises par GitHub sous forme de vérifications de code pour mettre à jour R_qual. Ce choix unifie en un seul point d'entrée les deux sources externes du modèle SGR — une simplification architecturale par rapport à la conception initiale qui prévoyait deux webhooks distincts.
 
-Le modèle SGR intègre un indicateur R_dev prévu pour être alimenté par des métriques d'activité GitHub : nombre de demandes de fusion ouvertes, délai moyen entre ouverture et intégration, proportion de demandes sans activité depuis plus de sept jours. L'interface `SGRGitHubActivity` et la fonction `calculerRDev()` sont implémentées dans le module de calcul et couvertes par les tests unitaires.
+La sécurité du canal repose sur la vérification de la signature HMAC-SHA256 fournie par GitHub dans l'en-tête `X-Hub-Signature-256`. Le secret partagé est généré côté application, persisté chiffré dans la table `ExternalIntegration`, et copié par le chef de projet lors de la configuration du webhook dans GitHub. Toute requête dont la signature ne correspond pas au secret enregistré est rejetée avec un code HTTP 401 avant tout traitement du contenu.
 
-L'intégration effective avec l'interface de programmation GitHub REST n'a pas été réalisée dans le périmètre de ce projet. Lorsque l'objet `githubActivity` est absent, R_dev retourne un score nul, ce qui ne bloque pas le calcul du SGR. Cette architecture garantit que l'ajout de l'intégration GitHub dans une version future ne nécessitera aucune modification de la logique de calcul — seule l'Action serveur `getProjectSGR()` devra être enrichie d'un appel à un module dédié, sur le modèle du module Codacy existant. **Lien avec le SGR :** le score actuel repose donc sur quatre indicateurs effectifs plus un cinquième neutralisé, limitation assumée et documentée en section 4.3.
+**Extraction des métriques.** À la réception d'un événement `pull_request`, le cas d'usage `ProcessGitHubWebhookUseCase` extrait trois indicateurs : la présence d'une demande ouverte et non en brouillon, son âge en jours depuis l'ouverture, et le statut de blocage (absence d'activité depuis plus de sept jours). Ces valeurs alimentent l'objet `SGRGitHubActivity`, qui est transmis à `CalculateSGRUseCase` pour déclencher immédiatement un recalcul et une persistance dans `SGRHistory`. À la réception d'un événement `check_run` d'origine Codacy, le titre du résumé de vérification est analysé pour en extraire le nombre total de problèmes détectés, lequel est ensuite ventilé entre bogues bloquants et problèmes de qualité selon les mêmes règles que le module `lib/codacy-api.ts`.
+
+**Figure 3.9b — Diagramme de séquence : traitement d'un événement webhook GitHub (UML 2.5)**
+
+[📊 DIAGRAMME DE SÉQUENCE : acteurs `GitHub` → `POST /api/webhooks/github?projectId=…` → `ProcessGitHubWebhookUseCase`. Cadre `alt [event = pull_request]` : vérification signature HMAC-SHA256 → `IExternalIntegrationRepository.findByProjectAndType()` → si absent : 404 ; si signature invalide : 401 ; sinon `extractGitHubActivity(payload)` → `CalculateSGRUseCase.execute({projectId, githubActivity})` → `SGRHistoryRepository.persist()` → 200. Cadre `alt [event = check_run && app.slug = codacy]` : `extractCodacyTechDebt(check_run)` → `CalculateSGRUseCase.execute({projectId, techDebt})` → 200. Cadre `[event = ping]` : 200 pong.]
+
+**Pourquoi ce diagramme.** Il rend visible la distinction entre les deux chemins de traitement d'un même point de terminaison, ainsi que les conditions d'échec authentifiées. Il prouve que le mécanisme de sécurité (signature HMAC) est intercalé avant toute logique métier. **Lien avec le SGR :** ce diagramme matérialise la boucle de rétroaction externe : un événement produit dans GitHub (ouverture d'une demande de fusion, résultat d'une analyse Codacy) se traduit automatiquement en une variation du score de risque, sans aucune intervention manuelle de l'équipe.
+
+**Configuration et interface utilisateur.** La liaison entre un projet TaskManage et un dépôt GitHub est réalisée depuis la page de paramètres du projet (`/project/[id]/settings`), accessible via le bouton "Automation" de l'en-tête. Le composant `GitHubIntegrationWidget` présente le formulaire de saisie du nom du dépôt au format `owner/repo`, l'URL du webhook à copier dans GitHub, et le secret HMAC généré côté client par `crypto.getRandomValues()`. Un bandeau d'avertissement s'affiche en mode développement pour signaler que GitHub ne peut pas joindre `localhost` — l'URL présentée pointe systématiquement vers le domaine de production `taskmanage-mu.vercel.app`, défini par la variable d'environnement `NEXT_PUBLIC_APP_URL`.
+
+Un incident de configuration notable a été résolu en cours d'intégration : le point de terminaison `/api/webhooks/github` retournait un code HTTP 404 côté GitHub bien que la route soit correctement définie. L'analyse des journaux a révélé que l'intergiciel Clerk interceptait toutes les routes `/api/*` et redirigait les requêtes non authentifiées vers `/sign-in` — redirection interprétée comme une absence de ressource par GitHub. La correction a consisté à déclarer `/api/webhooks/(.*)` comme route publique dans la liste `isPublicRoute` du fichier `proxy.ts`, préservant ainsi la vérification de signature HMAC comme seul mécanisme d'authentification pour ce canal. Cet incident illustre une interaction non documentée entre Clerk et Next.js 16 qui constitue une connaissance opérationnelle utile pour tout projet combinant ces deux technologies.
+
+**Figure 3.21 — Capture d'écran : interface de configuration du webhook GitHub**
+
+[📸 CAPTURE D'ÉCRAN : page `/project/[id]/settings` — composant `GitHubIntegrationWidget` avec champ `owner/repo`, champ URL webhook en lecture seule avec bouton copier, champ secret HMAC en lecture seule avec boutons copier et régénérer, bloc d'instructions numérotées avec lien externe vers GitHub, bouton "Save" actif, badge "Connected" vert si intégration enregistrée.]
+
+**Pourquoi cette capture.** Elle prouve que la configuration du webhook est une opération réalisable par le chef de projet sans accès au code ni à la console d'administration. L'autonomie de configuration est une exigence de mobilité (SQ2) : un chef de projet en déplacement doit pouvoir connecter un nouveau dépôt depuis n'importe quel appareil. **Lien avec le SGR :** sans cette interface, R_dev resterait systématiquement nul, ce qui minorerait structurellement le score global et réduirait la sensibilité du système aux risques liés au pipeline de livraison.
 
 ---
 
@@ -319,7 +337,7 @@ La mise en cache des ressources statiques par le Service Worker contribue direct
 
 ---
 
-> **Récapitulatif des visuels de ce chapitre (11 diagrammes UML + 10 captures d'écran)**
+> **Récapitulatif des visuels de ce chapitre (13 diagrammes UML + 11 captures d'écran)**
 >
 > **Diagrammes UML**
 > 1. Fig. 3.1 — Déploiement dev/prod (§3.1)
@@ -329,10 +347,11 @@ La mise en cache des ressources statiques par le Service Worker contribue direct
 > 5. Fig. 3.5 — États de la tâche (§3.3.1)
 > 6. Fig. 3.6 — Activité pipeline SGR (§3.3.2)
 > 7. Fig. 3.9 — Séquence Codacy (§3.4.1)
-> 8. Fig. 3.10 — Composants stratégies de cache (§3.5.1)
-> 9. Fig. 3.11 — Séquence offline/sync (§3.5.2)
-> 10. Fig. 3.13 — Séquence push sur seuil SGR (§3.5.3)
-> 11. Fig. 3.14 — Séquence drag-drop → recalcul SGR / R_WIP (§3.6.1)
+> 8. Fig. 3.9b — Séquence webhook GitHub : pull_request + check_run (§3.4.2)
+> 9. Fig. 3.10 — Composants stratégies de cache (§3.5.1)
+> 10. Fig. 3.11 — Séquence offline/sync (§3.5.2)
+> 11. Fig. 3.13 — Séquence push sur seuil SGR (§3.5.3)
+> 12. Fig. 3.14 — Séquence drag-drop → recalcul SGR / R_WIP (§3.6.1)
 >
 > **Captures d'écran (chacune associée à une preuve unique)**
 > 1. Fig. 3.7 — SGRWidget (preuve : restitution lisible du score) (§3.3.2)
@@ -344,3 +363,4 @@ La mise en cache des ressources statiques par le Service Worker contribue direct
 > 7. Fig. 3.20 — Analytics Bloc 2 — SGR croisé (preuve : proactivité à l'échelle portefeuille) (§3.6.3)
 > 8. Fig. 3.17 — Couverture Jest 93,7 % (preuve : correction interne) (§3.7.1)
 > 9. Fig. 3.18 — Rapport Lighthouse (preuve : accessibilité externe) (§3.7.3)
+> 10. Fig. 3.21 — Interface de configuration GitHub webhook (preuve : autonomie de configuration sans accès au code) (§3.4.2)
