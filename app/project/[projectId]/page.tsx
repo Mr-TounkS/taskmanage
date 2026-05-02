@@ -27,7 +27,7 @@ const WIPConfigWidget = dynamic(() => import("@/app/components/WIPConfigWidget")
 import Wrapper from "@/app/components/Wrapper";
 import { Project } from "@/app/type";
 import { useUser } from "@clerk/nextjs";
-import { Calendar, Check, CircleCheckBig, CopyPlus, Files, Kanban, List, ListTodo, Loader, Pencil, Share2, SlidersHorizontal, UserCheck, X, Zap } from "lucide-react";
+import { Calendar, Check, CircleCheckBig, CopyPlus, Files, Kanban, List, ListTodo, Loader, Pencil, Settings, Share2, SlidersHorizontal, UserCheck, X, Zap } from "lucide-react";
 import Link from "next/link";
 import React, { useEffect, useState } from "react";
 import { toast } from "react-toastify";
@@ -253,6 +253,13 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                         <Zap className="w-3.5 h-3.5" />
                         Automation
                     </button>
+                    <Link
+                        href={`/project/${projectId}/settings`}
+                        className="btn btn-ghost btn-sm btn-circle"
+                        title="Project settings"
+                    >
+                        <Settings className="w-4 h-4" />
+                    </Link>
                     <Link href={`/new-tasks/${projectId}`} className="btn btn-primary btn-sm gap-1.5">
                         <CopyPlus className="w-4 h-4" />
                         <span className="hidden xs:inline">New task</span>
