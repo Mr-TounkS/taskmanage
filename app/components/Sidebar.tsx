@@ -12,7 +12,8 @@ import { useEffect, useState } from "react";
 import { checkAndAddUser, createProject, getProjectsCreatedByUser } from "../actions";
 import { Project } from "../type";
 import { toast } from "react-toastify";
-import PushNotificationToggle from "./PushNotificationToggle";
+import dynamic from "next/dynamic";
+const PushNotificationToggle = dynamic(() => import("./PushNotificationToggle"), { ssr: false });
 
 interface SidebarProps {
     /** Contrôle l'ouverture du drawer sur mobile */

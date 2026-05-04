@@ -85,7 +85,7 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["firebase-admin"],
   experimental: {
     // Réduit le bundle en important uniquement les composants utilisés
-    optimizePackageImports: ["lucide-react", "recharts"],
+    optimizePackageImports: ["lucide-react", "recharts", "firebase"],
   },
   images: {
     // Allowed domains for Clerk profile pictures
