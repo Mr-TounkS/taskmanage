@@ -43,7 +43,7 @@ export default function SettingsPage({ params }: PageProps) {
         )?.role;
         setUserRole(role === 'PO' ? 'PO' : 'MEMBER');
       })
-      .finally(() => setChargement(false));
+      .finally(() => { setChargement(false); });
   }, [projectId, email]);
 
   return (

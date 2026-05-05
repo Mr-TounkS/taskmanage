@@ -73,7 +73,7 @@ export default function GitHubIntegrationWidget({
         }
       })
       .catch(() => toast.error('Erreur lors du chargement de la configuration GitHub'))
-      .finally(() => setChargement(false));
+      .finally(() => { setChargement(false); });
   }, [projectId]);
 
   const handleSave = async () => {
@@ -121,10 +121,10 @@ export default function GitHubIntegrationWidget({
     await navigator.clipboard.writeText(texte);
     if (type === 'url') {
       setCopiedUrl(true);
-      setTimeout(() => setCopiedUrl(false), 2000);
+      setTimeout(() => { setCopiedUrl(false); }, 2000);
     } else {
       setCopiedSecret(true);
-      setTimeout(() => setCopiedSecret(false), 2000);
+      setTimeout(() => { setCopiedSecret(false); }, 2000);
     }
   };
 
@@ -177,7 +177,7 @@ export default function GitHubIntegrationWidget({
           type="text"
           placeholder="owner/repo  (ex: vercel/next.js)"
           value={repoFullName}
-          onChange={(e) => setRepoFullName(e.target.value)}
+          onChange={(e) => { setRepoFullName(e.target.value); }}
           disabled={!isPO}
           className="input input-sm input-bordered w-full font-mono text-xs"
         />

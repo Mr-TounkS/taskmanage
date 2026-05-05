@@ -196,9 +196,9 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                                 autoFocus
                                 type="text"
                                 value={nameValue}
-                                onChange={e => setNameValue(e.target.value)}
+                                onChange={e => { setNameValue(e.target.value); }}
                                 onKeyDown={e => {
-                                    if (e.key === "Enter") saveProjectName();
+                                    if (e.key === "Enter") void saveProjectName();
                                     if (e.key === "Escape") cancelEditingName();
                                 }}
                                 className="input input-bordered input-sm text-xl sm:text-2xl font-bold h-9 w-52 sm:w-72 px-2"

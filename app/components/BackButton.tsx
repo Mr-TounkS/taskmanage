@@ -8,7 +8,7 @@ export default function BackButton() {
 
   return (
     <button
-      onClick={() => router.back()}
+      onClick={() => { router.back(); }}
       className="absolute top-4 left-4 btn btn-ghost btn-sm btn-circle"
       title="Back to previous page"
       aria-label="Back"
