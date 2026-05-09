@@ -110,20 +110,61 @@ export function usePushNotifications(): UsePushNotificationsReturn {
         return;
       }
 
-      // Étape 2 — Récupère le SW actif (sw.js généré par next-pwa).
-      // On NE réenregistre PAS firebase-messaging-sw.js : deux SW sur le même
-      // scope "/" provoquent un "push service error" (restriction Chrome par origine).
-      const swRegistration = await navigator.serviceWorker.ready;
-
-      // Étape 2b — Supprime toute subscription push résiduelle sur le SW actif.
-      // Une ancienne subscription (VAPID key différente ou SW précédent) bloque
-      // pushManager.subscribe() avec "push service error". On nettoie avant de recréer.
+      // Étape 2 — Récupère le SW actif.
+      // En production (Vercel HTTPS), sw.js est actif via PWARegister.
+      // En développement (localhost), même logique — Chrome accepte push sur http://localhost.
+      // Fallback : si aucun SW n'est actif, on enregistre firebase-messaging-sw.js.
+      let swRegistration: ServiceWorkerRegistration;
       try {
-        const existingSub = await swRegistration.pushManager.getSubscription();
-        if (existingSub) {
-          await existingSub.unsubscribe();
-          console.log("[FCM] Ancienne subscription push supprimée");
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        const activeReg = registrations.find((r) => r.active !== null);
+
+        if (activeReg) {
+          swRegistration = activeReg;
+          console.log("[FCM] SW actif trouvé :", activeReg.active?.scriptURL);
+        } else {
+          console.warn("[FCM] Aucun SW actif — enregistrement de firebase-messaging-sw.js…");
+          swRegistration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+
+          if (swRegistration.installing) {
+            await new Promise<void>((resolve, reject) => {
+              const sw = swRegistration.installing!;
+              sw.addEventListener("statechange", function handler() {
+                if (sw.state === "activated") {
+                  sw.removeEventListener("statechange", handler);
+                  resolve();
+                } else if (sw.state === "redundant") {
+                  sw.removeEventListener("statechange", handler);
+                  reject(new Error("SW redondant avant activation"));
+                }
+              });
+            });
+          }
         }
+      } catch (swErr: unknown) {
+        console.error("[FCM] Impossible d'obtenir un Service Worker :", swErr);
+        setIsLoading(false);
+        return;
+      }
+
+      // Étape 2b — Purge toutes les subscriptions push sur TOUS les SW enregistrés.
+      // Une ancienne subscription (VAPID key différente, firebase-messaging-sw.js
+      // ou sw.js d'un déploiement précédent) bloque getToken() avec "push service error".
+      try {
+        const allRegs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(
+          allRegs.map(async (reg) => {
+            try {
+              const sub = await reg.pushManager.getSubscription();
+              if (sub) {
+                await sub.unsubscribe();
+                console.log("[FCM] Subscription supprimée sur :", reg.active?.scriptURL ?? reg.scope);
+              }
+            } catch {
+              // Pas bloquant si un SW particulier ne coopère pas
+            }
+          })
+        );
       } catch {
         // Pas bloquant — on continue
       }
@@ -136,7 +177,18 @@ export function usePushNotifications(): UsePushNotificationsReturn {
           serviceWorkerRegistration: swRegistration,
         });
       } catch (tokenErr: unknown) {
-        console.error("[FCM] Échec getToken — vérifiez NEXT_PUBLIC_FIREBASE_VAPID_KEY sur Vercel :", tokenErr);
+        const errMsg = tokenErr instanceof Error ? tokenErr.message : String(tokenErr);
+        if (errMsg.includes("push service error")) {
+          console.error(
+            "[FCM] push service error — causes possibles :\n" +
+            "  1. VAPID key incorrecte (vérifiez Firebase Console → Cloud Messaging → Web Push certificates)\n" +
+            "  2. fcm.googleapis.com inaccessible (réseau/proxy)\n" +
+            "  3. Redéployez sur Vercel pour que la nouvelle clé NEXT_PUBLIC_ soit baked dans le build\n" +
+            "Erreur originale :", tokenErr
+          );
+        } else {
+          console.error("[FCM] Échec getToken :", tokenErr);
+        }
         setIsLoading(false);
         return;
       }

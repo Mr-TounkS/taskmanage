@@ -23,12 +23,10 @@ import { useEffect } from "react";
 
 export default function PWARegister() {
   useEffect(() => {
-    // Enregistrement uniquement en production (SW désactivé en dev par next-pwa)
-    if (
-      typeof window !== "undefined" &&
-      "serviceWorker" in navigator &&
-      window.location.protocol === "https:" // Push API requiert HTTPS
-    ) {
+    // Chrome autorise les push sur localhost (http) et sur tout domaine HTTPS.
+    // On enregistre le SW dès que le navigateur le supporte, sans restreindre
+    // au protocole HTTPS (ce qui bloquait les tests en dev sur localhost).
+    if (typeof window !== "undefined" && "serviceWorker" in navigator) {
       navigator.serviceWorker
         .register("/sw.js")
         .then((registration) => {
