@@ -109,6 +109,8 @@ export function usePushNotifications(): UsePushNotificationsReturn {
         setIsLoading(false);
         return;
       }
+      // Log de diagnostic : affiche les 12 premiers et derniers chars pour vérification
+      console.log(`[FCM] VAPID key utilisée : ${vapidKey.slice(0, 12)}...${vapidKey.slice(-8)}`);
 
       // Étape 2 — Récupère le SW actif.
       // En production (Vercel HTTPS), sw.js est actif via PWARegister.
