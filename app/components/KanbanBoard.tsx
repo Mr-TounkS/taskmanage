@@ -141,6 +141,12 @@ export default function KanbanBoard({ tasks, email, onDelete, onTaskMoved }: Kan
             return
         }
 
+        // Règle métier : une tâche Done ne peut plus changer de statut
+        if (tache?.status === "Done") {
+            toast.error("A completed task cannot be moved back.")
+            return
+        }
+
         const nouveauStatut = destination.droppableId as "To Do" | "In Progress" | "Done"
 
         if (nouveauStatut === "Done") {
