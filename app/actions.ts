@@ -380,6 +380,9 @@ export const getProjectFiles = async (projectId: string) => {
                 id: true,
                 name: true,
                 status: true,
+                user: {
+                    select: { name: true, email: true, imageUrl: true },
+                },
                 files: {
                     select: {
                         id: true,
