@@ -370,6 +370,38 @@ export const updateTaskStatus = async (
 };
 
 /**
+ * Retourne tous les fichiers d'un projet, groupés par tâche.
+ */
+export const getProjectFiles = async (projectId: string) => {
+    try {
+        const tasks = await prisma.task.findMany({
+            where: { projectId, files: { some: {} } },
+            select: {
+                id: true,
+                name: true,
+                status: true,
+                files: {
+                    select: {
+                        id: true,
+                        fileName: true,
+                        fileSize: true,
+                        mimeType: true,
+                        blobUrl: true,
+                        uploadedAt: true,
+                    },
+                    orderBy: { uploadedAt: 'asc' },
+                },
+            },
+            orderBy: { id: 'desc' },
+        });
+        return tasks;
+    } catch (error) {
+        console.error('[GetProjectFiles Error]', error);
+        return [];
+    }
+};
+
+/**
  * Retourne tous les fichiers attachés à une tâche, triés par date d'upload.
  */
 export const getTaskFiles = async (taskId: string) => {
