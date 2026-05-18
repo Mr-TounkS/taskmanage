@@ -16,6 +16,9 @@ import { AlertTriangle, TrendingDown, Clock, Activity, Code2, RefreshCw } from "
 import { getProjectSGR, getSGRHistory } from "@/app/actions";
 import { SGRResult } from "@/lib/risk-algorithm/types";
 
+// PrescriptivePanel chargé en différé — appel serveur Anthropic API uniquement à la demande
+const PrescriptivePanel = dynamic(() => import("./PrescriptivePanel"), { ssr: false });
+
 // Recharts (~300 Ko) chargé en différé — réduit le TBT sur le chargement initial
 // Corrige : "Reduce JavaScript execution time" — Lighthouse Performance
 const SGRHistoryChart = dynamic(() => import("./SGRHistoryChart"), {
@@ -206,6 +209,9 @@ export default function SGRWidget({ projectId, refreshKey }: SGRWidgetProps) {
       <div className="border-t border-base-300 mt-4 pt-2">
         <SGRHistoryChart historique={historique} />
       </div>
+
+      {/* Agent prescriptif LLM — activé à la demande */}
+      <PrescriptivePanel projectId={projectId} sgrScore={result.sgr} />
     </div>
   );
 }

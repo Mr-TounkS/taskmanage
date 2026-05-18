@@ -14,6 +14,7 @@ import {
   SGRTechDebt,
   SGRGitHubActivity,
   SGRColumnConfig,
+  SprintContext,
   POIDS_SGR,
   POIDS_INTERNES,
   SEUILS_SGR,
@@ -21,6 +22,7 @@ import {
   PERCENTILE_SLE,
   FENETRE_THROUGHPUT_DAYS,
 } from './types';
+import { MonteCarloSimulator } from './MonteCarloSimulator';
 
 // ---------------------------------------------------------------------------
 // Utilitaires internes
@@ -127,6 +129,46 @@ function calculerRThroughput(tasks: SGRTask[], maintenant: Date): SGRIndicator {
   return { score, weight: POIDS_INTERNES.FLOW.THROUGHPUT, contribution: score * POIDS_INTERNES.FLOW.THROUGHPUT, details: {} };
 }
 
+/**
+ * Calcule l'indicateur Monte-Carlo (R_MC) à partir du SprintContext.
+ * Transforme P_delai ∈ [0, 1] en score ∈ [0, 100] pour homogénéité.
+ * Retourne null si le contexte sprint est absent (indicateur désactivé).
+ */
+function calculerRMonteCarlo(
+  sprint: SprintContext,
+  maintenant: Date
+): (SGRIndicator & { probabilityOfDelay: number; medianDaysToComplete: number; p85DaysToComplete: number }) | null {
+  const msParJour = 1000 * 60 * 60 * 24;
+  const remainingDays = Math.max(
+    0,
+    Math.ceil((sprint.sprintEndDate.getTime() - maintenant.getTime()) / msParJour)
+  );
+
+  const result = MonteCarloSimulator.simulate({
+    throughputHistory: sprint.throughputHistory,
+    remainingWorkItems: sprint.remainingWorkItems,
+    remainingDays,
+    iterations: 10_000,
+  });
+
+  const score = clamp(result.probabilityOfDelay * 100);
+
+  return {
+    score,
+    weight: POIDS_INTERNES.FLOW_MONTE_CARLO.MONTE_CARLO,
+    contribution: score * POIDS_INTERNES.FLOW_MONTE_CARLO.MONTE_CARLO,
+    details: {
+      probabilityOfDelay: result.probabilityOfDelay,
+      medianDaysToComplete: result.medianDaysToComplete,
+      p85DaysToComplete: result.p85DaysToComplete,
+      remainingDays,
+    },
+    probabilityOfDelay: result.probabilityOfDelay,
+    medianDaysToComplete: result.medianDaysToComplete,
+    p85DaysToComplete: result.p85DaysToComplete,
+  };
+}
+
 function calculerRDev(github?: SGRGitHubActivity): SGRIndicator {
   if (!github) return { score: 0, weight: POIDS_SGR.DEV, contribution: 0, details: {} };
 
@@ -175,6 +217,10 @@ function genererAlertes(indicateurs: SGRResult['indicateurs']): string[] {
   if (indicateurs.wip.score > 0) alertes.push(`WIP limit exceeded (${Math.round(indicateurs.wip.score)}%)`);
   if (indicateurs.github && indicateurs.github.score > 30) alertes.push(`GitHub activity at risk (${Math.round(indicateurs.github.score)}%)`);
   if (indicateurs.tech.score > 30) alertes.push(`High technical debt (${Math.round(indicateurs.tech.score)}%)`);
+  if (indicateurs.monteCarlo) {
+    const p = Math.round(indicateurs.monteCarlo.probabilityOfDelay * 100);
+    if (p >= 70) alertes.push(`Monte-Carlo: ${p}% probability of sprint delay (P85 = ${indicateurs.monteCarlo.p85DaysToComplete}d)`);
+  }
   return alertes;
 }
 
@@ -192,23 +238,46 @@ export function calculateSGR(input: SGRInput): SGRResult {
   const github = calculerRDev(input.githubActivity);
   const tech = calculerRQuality(input.techDebt);
 
-  const scoreFlow = clamp(
-    wip.score * POIDS_INTERNES.FLOW.WIP +
-    cycleTime.score * POIDS_INTERNES.FLOW.CT +
-    age.score * POIDS_INTERNES.FLOW.AGE +
-    throughput.score * POIDS_INTERNES.FLOW.THROUGHPUT
-  );
+  // Monte-Carlo activé uniquement si le contexte sprint est fourni
+  const monteCarlo = input.sprintContext
+    ? calculerRMonteCarlo(input.sprintContext, maintenant)
+    : null;
+
+  let scoreFlow: number;
+
+  if (monteCarlo !== null) {
+    // SGR enrichi : P_delai remplace partiellement le throughput déterministe
+    const w = POIDS_INTERNES.FLOW_MONTE_CARLO;
+    scoreFlow = clamp(
+      wip.score       * w.WIP +
+      cycleTime.score * w.CT +
+      age.score       * w.AGE +
+      throughput.score * w.THROUGHPUT +
+      monteCarlo.score * w.MONTE_CARLO
+    );
+  } else {
+    // SGR classique : pondération déterministe sans Monte-Carlo
+    scoreFlow = clamp(
+      wip.score       * POIDS_INTERNES.FLOW.WIP +
+      cycleTime.score * POIDS_INTERNES.FLOW.CT +
+      age.score       * POIDS_INTERNES.FLOW.AGE +
+      throughput.score * POIDS_INTERNES.FLOW.THROUGHPUT
+    );
+  }
 
   const scoreDev = github.score;
   const scoreQuality = tech.score;
 
   const sgr = clamp(
-    scoreFlow * POIDS_SGR.FLOW +
-    scoreDev * POIDS_SGR.DEV +
+    scoreFlow    * POIDS_SGR.FLOW +
+    scoreDev     * POIDS_SGR.DEV +
     scoreQuality * POIDS_SGR.QUALITY
   );
 
-  const indicateurs = { wip, cycleTime, age, throughput, github, tech };
+  const indicateurs: SGRResult['indicateurs'] = {
+    wip, cycleTime, age, throughput, github, tech,
+    ...(monteCarlo !== null ? { monteCarlo } : {}),
+  };
 
   return {
     sgr: Math.round(sgr * 10) / 10,

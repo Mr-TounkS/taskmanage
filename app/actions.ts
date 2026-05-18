@@ -30,6 +30,10 @@ import { CalculateSGRUseCase } from "@/application/use-cases/sgr/CalculateSGRUse
 import { SGRTechDebt } from "@/lib/risk-algorithm/types";
 import { fetchCodacyMetrics } from "@/lib/codacy-api";
 
+// Agent prescriptif LLM
+import { RiskPrescriptiveAgent, buildPayload, SEUIL_PRESCRIPTION } from "@/lib/risk-agent/RiskPrescriptiveAgent";
+import { LLMRiskAnalysisResponse } from "@/lib/risk-agent/types";
+
 // Push notifications
 import { sendPushToSubscriptions } from "@/lib/push-notifications";
 import { PrismaSubscriptionRepository } from "@/infrastructure/repositories/PrismaSubscriptionRepository";
@@ -477,6 +481,44 @@ export async function saveGitHubIntegration(
 export async function getGitHubIntegration(projectId: string) {
     const repo = new PrismaExternalIntegrationRepository(prisma);
     return repo.findByProjectAndType(projectId, 'github');
+}
+
+/**
+ * Génère une analyse prescriptive LLM pour un projet dont le SGR dépasse le seuil.
+ *
+ * Retourne null si le SGR est en dessous du seuil (pas de risque actionnable)
+ * ou si ANTHROPIC_API_KEY n'est pas configuré (dégradation silencieuse).
+ *
+ * Ne bloque jamais l'UI — les erreurs LLM sont consommées ici.
+ */
+export async function generateRiskPrescription(
+    projectId: string
+): Promise<LLMRiskAnalysisResponse | null> {
+    if (!process.env.ANTHROPIC_API_KEY) {
+        console.warn('[RiskAgent] ANTHROPIC_API_KEY non configuré — agent désactivé');
+        return null;
+    }
+
+    try {
+        const { taskRepo, columnWIPConfigRepo, sgrHistoryRepo } = makeRepos();
+
+        const sgrResult = await new CalculateSGRUseCase(taskRepo, columnWIPConfigRepo, sgrHistoryRepo).execute({
+            projectId,
+        });
+
+        if (sgrResult.sgr < SEUIL_PRESCRIPTION) return null;
+
+        // Compte les tâches actives (WIP courant)
+        const taches = await taskRepo.findByProject(projectId);
+        const activeWIP = taches.filter((t) => t.status === 'In Progress').length;
+
+        const payload = buildPayload(sgrResult, activeWIP);
+        const agent = new RiskPrescriptiveAgent();
+        return await agent.analyze(payload);
+    } catch (error) {
+        console.error('[RiskAgent] Erreur analyse prescriptive :', error);
+        return null;
+    }
 }
 
 /** Supprime l'intégration GitHub d'un projet */

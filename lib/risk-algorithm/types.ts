@@ -35,12 +35,30 @@ export interface SGRTechDebt {
   detteTechniqueDays: number;  // Dette technique en jours-homme
 }
 
+/**
+ * Contexte du sprint courant — requis pour activer la simulation Monte-Carlo.
+ * Sans ce contexte, l'indicateur Monte-Carlo est absent du calcul SGR.
+ */
+export interface SprintContext {
+  /** Date de fin du sprint (deadline) */
+  sprintEndDate: Date;
+  /** Nombre de tâches restantes dans le sprint (backlog non terminé) */
+  remainingWorkItems: number;
+  /**
+   * Historique du débit quotidien sur les sprints précédents.
+   * Chaque valeur = tâches terminées ce jour-là.
+   * Minimum recommandé : 10 valeurs pour une précision statistique acceptable.
+   */
+  throughputHistory: number[];
+}
+
 /** Paramètres complets passés à calculateSGR */
 export interface SGRInput {
   tasks: SGRTask[];
   columnConfigs: SGRColumnConfig[];
   techDebt?: SGRTechDebt;             // Absent si Codacy non intégré
   githubActivity?: SGRGitHubActivity; // Absent si GitHub non intégré
+  sprintContext?: SprintContext;       // Absent si Monte-Carlo désactivé
   dateReference?: Date;               // Par défaut : Date.now() — utile pour les tests
 }
 
@@ -81,6 +99,15 @@ export interface SGRResult {
     /** Présent uniquement si GitHub est intégré */
     github?: SGRIndicator;
     tech: SGRIndicator;
+    /**
+     * Présent uniquement si SprintContext est fourni.
+     * Encode P_delai [0,1] → score [0,100] pour homogénéité avec les autres indicateurs.
+     */
+    monteCarlo?: SGRIndicator & {
+      probabilityOfDelay: number;
+      medianDaysToComplete: number;
+      p85DaysToComplete: number;
+    };
   };
   /** Avertissements lisibles pour l'interface */
   alertes: string[];
@@ -97,13 +124,24 @@ export const POIDS_SGR = {
   QUALITY: 0.20,
 } as const;
 
-/** Pondérations internes des sous-indicateurs */
+/**
+ * Pondérations internes des sous-indicateurs.
+ * Deux jeux pour FLOW : avec ou sans Monte-Carlo (la somme = 1.0 dans les deux cas).
+ */
 export const POIDS_INTERNES = {
   FLOW: {
     WIP: 0.40,
     CT: 0.30,
     AGE: 0.20,
     THROUGHPUT: 0.10,
+  },
+  /** Utilisé uniquement quand SprintContext est fourni — enrichit R_flow avec P_delai */
+  FLOW_MONTE_CARLO: {
+    WIP: 0.30,
+    CT: 0.25,
+    AGE: 0.15,
+    THROUGHPUT: 0.05,
+    MONTE_CARLO: 0.25,
   },
   DEV: {
     PR_OPEN: 0.40,
