@@ -32,6 +32,9 @@ import { fetchCodacyMetrics } from "@/lib/codacy-api";
 
 // Push notifications
 import { sendPushToSubscriptions } from "@/lib/push-notifications";
+import { PrismaSubscriptionRepository } from "@/infrastructure/repositories/PrismaSubscriptionRepository";
+import { RegisterPushSubscriptionUseCase } from "@/application/use-cases/push/RegisterPushSubscriptionUseCase";
+import { SendPushNotificationUseCase, WebPushService } from "@/application/use-cases/push/SendPushNotificationUseCase";
 
 // Use Cases - Task
 import { CreateTaskUseCase } from "@/application/use-cases/task/CreateTaskUseCase";
@@ -45,7 +48,8 @@ function makeRepos() {
     const taskRepo = new PrismaTaskRepository(prisma);
     const columnWIPConfigRepo = new PrismaColumnWIPConfigRepository(prisma);
     const sgrHistoryRepo = new PrismaSGRHistoryRepository(prisma);
-    return { userRepo, projectRepo, taskRepo, columnWIPConfigRepo, sgrHistoryRepo };
+    const subscriptionRepo = new PrismaSubscriptionRepository(prisma);
+    return { userRepo, projectRepo, taskRepo, columnWIPConfigRepo, sgrHistoryRepo, subscriptionRepo };
 }
 
 export async function checkAndAddUser(email: string, name: string, imageUrl?: string) {
@@ -236,7 +240,7 @@ export async function getProjectSGR(
 
 /**
  * Envoie une notification push à tous les membres abonnés d'un projet.
- * Supprime automatiquement les abonnements expirés (code 410).
+ * Délègue à SendPushNotificationUseCase (Clean Architecture).
  */
 async function notifyProjectMembersPush(
     projectId: string,
@@ -244,36 +248,19 @@ async function notifyProjectMembersPush(
     niveau: string
 ): Promise<void> {
     try {
-        // Récupère tous les abonnements push des membres du projet
-        const subscriptions = await prisma.pushSubscription.findMany({
-            where: {
-                user: {
-                    OR: [
-                        { userProjects: { some: { projectId } } },
-                        { createdProjects: { some: { id: projectId } } },
-                    ],
-                },
-            },
-        });
+        const { subscriptionRepo } = makeRepos();
 
-        if (subscriptions.length === 0) return;
-
-        const isCritical = sgr >= 80;
-        const payload = {
-            title: isCritical ? "Risque critique détecté" : "Risque modéré détecté",
-            body: `SGR : ${Math.round(sgr)}/100 — Niveau ${niveau}. Vérifiez votre tableau Kanban.`,
-            url: `/project/${projectId}`,
-            icon: "/android-192x192.png",
+        // Adaptateur WebPushService → lib/push-notifications (FCM Admin SDK)
+        const webPushService: WebPushService = {
+            send: async (subscriptions, payload) =>
+                sendPushToSubscriptions(subscriptions, payload),
         };
 
-        const expiredEndpoints = await sendPushToSubscriptions(subscriptions, payload);
-
-        // Nettoie les abonnements expirés
-        if (expiredEndpoints.length > 0) {
-            await prisma.pushSubscription.deleteMany({
-                where: { endpoint: { in: expiredEndpoints } },
-            });
-        }
+        await new SendPushNotificationUseCase(subscriptionRepo, webPushService).execute({
+            projectId,
+            sgr,
+            niveau: niveau as 'low' | 'moderate' | 'high' | 'critical',
+        });
     } catch (error) {
         // Ne bloque jamais le calcul SGR si le push échoue
         console.error("[Push SGR] Erreur notification :", error);

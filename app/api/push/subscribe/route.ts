@@ -1,50 +1,39 @@
 /**
  * POST /api/push/subscribe
- * Sauvegarde le token FCM Firebase d'un utilisateur en base de données.
- *
- * Migration Web Push → Firebase FCM :
- * Le token FCM est stocké dans le champ `endpoint` (réutilisé).
- * Les champs `p256dh` et `auth` sont conservés vides pour compatibilité schéma.
+ * Enregistre le token FCM d'un utilisateur via RegisterPushSubscriptionUseCase.
  *
  * Corps attendu : { token: string, userEmail: string }
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { PrismaUserRepository } from "@/infrastructure/repositories/PrismaUserRepository";
+import { PrismaSubscriptionRepository } from "@/infrastructure/repositories/PrismaSubscriptionRepository";
+import { RegisterPushSubscriptionUseCase } from "@/application/use-cases/push/RegisterPushSubscriptionUseCase";
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json() as {
-      token?: string;
-      userEmail?: string;
-    };
-
+    const body = await req.json() as { token?: string; userEmail?: string };
     const { token, userEmail } = body;
 
     if (!token || !userEmail) {
       return NextResponse.json(
-        { error: "Champs manquants : token et userEmail requis" },
+        { error: "Missing fields: token and userEmail required" },
         { status: 400 }
       );
     }
 
-    // Récupère l'utilisateur en base via son email
-    const user = await prisma.user.findUnique({ where: { email: userEmail } });
-    if (!user) {
-      return NextResponse.json({ error: "Utilisateur introuvable" }, { status: 404 });
-    }
+    const userRepo         = new PrismaUserRepository(prisma);
+    const subscriptionRepo = new PrismaSubscriptionRepository(prisma);
+    const useCase          = new RegisterPushSubscriptionUseCase(subscriptionRepo, userRepo);
 
-    // Upsert : le token FCM est stocké dans le champ endpoint
-    // p256dh et auth sont vides — non utilisés par Firebase FCM
-    await prisma.pushSubscription.upsert({
-      where:  { endpoint: token },
-      create: { userId: user.id, endpoint: token, p256dh: "", auth: "" },
-      update: { userId: user.id },
-    });
+    await useCase.execute({ userEmail, token });
 
     return NextResponse.json({ success: true }, { status: 201 });
   } catch (error) {
-    console.error("[FCM Subscribe] Erreur :", error);
-    return NextResponse.json({ error: "Erreur interne" }, { status: 500 });
+    console.error("[Push Subscribe] Error:", error);
+    const message = error instanceof Error ? error.message : "Internal error";
+    const status  = message.includes("introuvable") ? 404 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }
