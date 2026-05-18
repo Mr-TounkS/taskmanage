@@ -14,7 +14,7 @@
 
 import { useState } from "react";
 import { Brain, AlertTriangle, ChevronDown, ChevronUp, Loader2, Zap } from "lucide-react";
-import { generateRiskPrescription } from "@/app/actions";
+import { generateRiskPrescription, PrescriptionError } from "@/app/actions";
 import { LLMRiskAnalysisResponse, ActionPriority } from "@/lib/risk-agent/types";
 
 // ---------------------------------------------------------------------------
@@ -63,12 +63,21 @@ export default function PrescriptivePanel({ projectId, sgrScore }: PrescriptiveP
     setErreur(null);
     setAnalyse(null);
     try {
-      const result = await generateRiskPrescription(projectId);
-      if (!result) {
-        setErreur("SGR below threshold or API key not configured.");
-      } else {
-        setAnalyse(result);
+      const result = await generateRiskPrescription(projectId, sgrScore);
+      // Résultat valide
+      if ('riskLevel' in result) {
+        setAnalyse(result as LLMRiskAnalysisResponse);
         setExpanded(true);
+        return;
+      }
+      // Erreur typée
+      const err = result as PrescriptionError;
+      if (err.type === 'NO_API_KEY') {
+        setErreur("ANTHROPIC_API_KEY not configured on server.");
+      } else if (err.type === 'BELOW_THRESHOLD') {
+        setErreur(`SGR ${err.sgr}/100 is below threshold (${err.threshold}). No action needed.`);
+      } else {
+        setErreur(`Analysis error: ${err.message}`);
       }
     } catch {
       setErreur("Analysis failed. Check server logs.");

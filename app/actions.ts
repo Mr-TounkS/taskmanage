@@ -483,20 +483,23 @@ export async function getGitHubIntegration(projectId: string) {
     return repo.findByProjectAndType(projectId, 'github');
 }
 
+export type PrescriptionError =
+  | { type: 'NO_API_KEY' }
+  | { type: 'BELOW_THRESHOLD'; sgr: number; threshold: number }
+  | { type: 'ERROR'; message: string };
+
 /**
- * Génère une analyse prescriptive LLM pour un projet dont le SGR dépasse le seuil.
+ * Génère une analyse prescriptive LLM pour un projet.
  *
- * Retourne null si le SGR est en dessous du seuil (pas de risque actionnable)
- * ou si ANTHROPIC_API_KEY n'est pas configuré (dégradation silencieuse).
- *
- * Ne bloque jamais l'UI — les erreurs LLM sont consommées ici.
+ * Retourne le résultat JSON ou un objet d'erreur typé pour un meilleur diagnostic côté UI.
+ * Ne bloque jamais l'interface — toutes les erreurs sont capturées.
  */
 export async function generateRiskPrescription(
-    projectId: string
-): Promise<LLMRiskAnalysisResponse | null> {
+    projectId: string,
+    currentSgr?: number
+): Promise<LLMRiskAnalysisResponse | PrescriptionError> {
     if (!process.env.ANTHROPIC_API_KEY) {
-        console.warn('[RiskAgent] ANTHROPIC_API_KEY non configuré — agent désactivé');
-        return null;
+        return { type: 'NO_API_KEY' };
     }
 
     try {
@@ -506,9 +509,12 @@ export async function generateRiskPrescription(
             projectId,
         });
 
-        if (sgrResult.sgr < SEUIL_PRESCRIPTION) return null;
+        // Utilise le SGR recalculé, ou le SGR passé par le client comme fallback
+        const sgrEffectif = sgrResult.sgr ?? currentSgr ?? 0;
+        if (sgrEffectif < SEUIL_PRESCRIPTION) {
+            return { type: 'BELOW_THRESHOLD', sgr: sgrEffectif, threshold: SEUIL_PRESCRIPTION };
+        }
 
-        // Compte les tâches actives (WIP courant)
         const taches = await taskRepo.findByProject(projectId);
         const activeWIP = taches.filter((t) => t.status === 'In Progress').length;
 
@@ -517,7 +523,7 @@ export async function generateRiskPrescription(
         return await agent.analyze(payload);
     } catch (error) {
         console.error('[RiskAgent] Erreur analyse prescriptive :', error);
-        return null;
+        return { type: 'ERROR', message: error instanceof Error ? error.message : String(error) };
     }
 }
 

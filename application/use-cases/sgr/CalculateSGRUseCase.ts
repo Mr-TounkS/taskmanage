@@ -15,7 +15,7 @@ import { ITaskRepository } from '../../../domain/repositories/ITaskRepository';
 import { IColumnWIPConfigRepository } from '../../../domain/repositories/IColumnWIPConfigRepository';
 import { ISGRHistoryRepository } from '../../../domain/repositories/ISGRHistoryRepository';
 import { calculateSGR } from '../../../lib/risk-algorithm/calculateSGR';
-import { SGRResult, SGRTechDebt, SGRGitHubActivity } from '../../../lib/risk-algorithm/types';
+import { SGRResult, SGRTechDebt, SGRGitHubActivity, SprintContext } from '../../../lib/risk-algorithm/types';
 
 export interface CalculateSGRInput {
   projectId: string;
@@ -71,11 +71,42 @@ export class CalculateSGRUseCase {
       wipLimit: c.wipLimit,
     }));
 
+    // Dérivation automatique du SprintContext pour activer Monte-Carlo
+    // Hypothèse : sprint de 2 semaines à partir d'aujourd'hui (durée Scrum standard)
+    const maintenant = dateReference ?? new Date();
+    const msParJour = 1000 * 60 * 60 * 24;
+    const sprintContext: SprintContext | undefined = (() => {
+      const terminees = sgrTasks.filter(t => t.completedAt !== null);
+      if (terminees.length < 3) return undefined; // Pas assez d'historique
+
+      // Débit quotidien sur les 30 derniers jours
+      const debut30j = new Date(maintenant.getTime() - 30 * msParJour);
+      const throughputMap = new Map<string, number>();
+      for (let d = 0; d < 30; d++) {
+        const jour = new Date(debut30j.getTime() + d * msParJour);
+        const cle = jour.toISOString().slice(0, 10);
+        throughputMap.set(cle, 0);
+      }
+      for (const t of terminees) {
+        const cle = t.completedAt!.toISOString().slice(0, 10);
+        if (throughputMap.has(cle)) throughputMap.set(cle, (throughputMap.get(cle) ?? 0) + 1);
+      }
+      const throughputHistory = Array.from(throughputMap.values()).filter(v => v > 0);
+      if (throughputHistory.length < 3) return undefined;
+
+      return {
+        sprintEndDate: new Date(maintenant.getTime() + 14 * msParJour),
+        remainingWorkItems: sgrTasks.filter(t => t.status !== 'Done').length,
+        throughputHistory,
+      };
+    })();
+
     const result = calculateSGR({
       tasks: sgrTasks,
       columnConfigs: sgrColumnConfigs,
       techDebt,
       githubActivity,
+      sprintContext,
       dateReference,
     });
 

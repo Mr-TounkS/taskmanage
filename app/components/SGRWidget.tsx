@@ -67,6 +67,7 @@ const LABELS_INDICATEURS: Record<string, { label: string; icon: React.ReactNode 
   age: { label: "Task Age", icon: <Activity className="w-3 h-3" /> },
   throughput: { label: "Throughput", icon: <TrendingDown className="w-3 h-3" /> },
   tech: { label: "Tech Debt", icon: <Code2 className="w-3 h-3" /> },
+  monteCarlo: { label: "Monte-Carlo", icon: <Activity className="w-3 h-3 text-primary" /> },
 };
 
 // ---------------------------------------------------------------------------
@@ -161,7 +162,7 @@ export default function SGRWidget({ projectId, refreshKey }: SGRWidgetProps) {
         max={100}
       />
 
-      {/* Indicateurs détaillés (5 seulement : wip, cycleTime, age, throughput, tech) */}
+      {/* Indicateurs détaillés */}
       <div className="space-y-2 mb-4">
         {(["wip", "cycleTime", "age", "throughput", "tech"] as const).map((cle) => {
           const indicateur = result.indicateurs[cle];
@@ -183,6 +184,28 @@ export default function SGRWidget({ projectId, refreshKey }: SGRWidgetProps) {
             </div>
           );
         })}
+
+        {/* Indicateur Monte-Carlo — affiché uniquement si SprintContext disponible */}
+        {result.indicateurs.monteCarlo && (() => {
+          const mc = result.indicateurs.monteCarlo!;
+          const meta = LABELS_INDICATEURS.monteCarlo;
+          return (
+            <div className="flex items-center gap-2 pt-1 border-t border-base-300">
+              <span className="text-primary">{meta.icon}</span>
+              <span className="text-xs text-primary/80 w-20 shrink-0 font-medium">
+                {meta.label}
+              </span>
+              <progress
+                className={`progress flex-1 h-1.5 ${couleurBarre(mc.score)}`}
+                value={mc.score}
+                max={100}
+              />
+              <span className="text-xs tabular-nums w-8 text-right">
+                {Math.round(mc.probabilityOfDelay * 100)}%
+              </span>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Alertes actives */}
