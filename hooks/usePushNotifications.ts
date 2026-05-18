@@ -96,14 +96,28 @@ export function usePushNotifications(): UsePushNotificationsReturn {
 
       // Étape 4 — Génère la PushSubscription avec la clé publique VAPID
       const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+
+      // Diagnostic : vérifie que la clé est bien injectée au build
+      console.log("[WebPush] VAPID key présente :", !!vapidPublicKey);
+      console.log("[WebPush] VAPID key (début) :", vapidPublicKey?.slice(0, 20) ?? "UNDEFINED");
+
       if (!vapidPublicKey) {
-        console.error("[WebPush] NEXT_PUBLIC_VAPID_PUBLIC_KEY manquant dans .env");
+        console.error("[WebPush] NEXT_PUBLIC_VAPID_PUBLIC_KEY manquant — vérifiez les env vars Vercel et redéployez");
+        return;
+      }
+
+      let applicationServerKey: ArrayBuffer;
+      try {
+        applicationServerKey = urlBase64ToUint8Array(vapidPublicKey);
+        console.log("[WebPush] Clé convertie en ArrayBuffer, longueur :", applicationServerKey.byteLength);
+      } catch (convErr) {
+        console.error("[WebPush] Erreur conversion clé VAPID :", convErr);
         return;
       }
 
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+        applicationServerKey,
       });
 
       console.log("[WebPush] Subscription générée :", subscription.endpoint.slice(0, 50) + "...");
