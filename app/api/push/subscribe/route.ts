@@ -13,12 +13,17 @@ import { RegisterPushSubscriptionUseCase } from "@/application/use-cases/push/Re
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json() as { token?: string; userEmail?: string };
-    const { token, userEmail } = body;
+    const body = await req.json() as {
+      userEmail?: string;
+      endpoint?: string;
+      p256dh?: string;
+      auth?: string;
+    };
+    const { userEmail, endpoint, p256dh, auth } = body;
 
-    if (!token || !userEmail) {
+    if (!userEmail || !endpoint || !p256dh || !auth) {
       return NextResponse.json(
-        { error: "Missing fields: token and userEmail required" },
+        { error: "Missing fields: userEmail, endpoint, p256dh and auth required" },
         { status: 400 }
       );
     }
@@ -27,7 +32,7 @@ export async function POST(req: NextRequest) {
     const subscriptionRepo = new PrismaSubscriptionRepository(prisma);
     const useCase          = new RegisterPushSubscriptionUseCase(subscriptionRepo, userRepo);
 
-    await useCase.execute({ userEmail, token });
+    await useCase.execute({ userEmail, token: endpoint, p256dh, auth });
 
     return NextResponse.json({ success: true }, { status: 201 });
   } catch (error) {

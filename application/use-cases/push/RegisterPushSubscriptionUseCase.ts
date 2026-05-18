@@ -12,8 +12,10 @@ import { IUserRepository } from '../../../domain/repositories/IUserRepository';
 
 export interface RegisterPushSubscriptionInput {
   userEmail: string;
-  /** Token FCM (remplace endpoint dans l'architecture VAPID classique) */
-  token: string;
+  /** URL unique du push service du navigateur */
+  token: string;   // endpoint
+  p256dh?: string; // clé publique de chiffrement
+  auth?: string;   // secret d'authentification
 }
 
 export class RegisterPushSubscriptionUseCase {
@@ -23,7 +25,7 @@ export class RegisterPushSubscriptionUseCase {
   ) {}
 
   async execute(input: RegisterPushSubscriptionInput): Promise<void> {
-    const { userEmail, token } = input;
+    const { userEmail, token, p256dh, auth } = input;
 
     const user = await this.userRepository.findByEmail(userEmail);
     if (!user) throw new Error(`Utilisateur introuvable : ${userEmail}`);
@@ -31,8 +33,8 @@ export class RegisterPushSubscriptionUseCase {
     await this.subscriptionRepository.save({
       userId:   user.id,
       endpoint: token,
-      p256dh:   '',
-      auth:     '',
+      p256dh:   p256dh ?? '',
+      auth:     auth   ?? '',
     });
   }
 }
