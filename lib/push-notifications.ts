@@ -18,12 +18,29 @@
 
 import webpush from "web-push";
 
-// Configuration VAPID — initialisée une seule fois
-webpush.setVapidDetails(
-  process.env.VAPID_MAILTO ?? "mailto:admin@taskmanage.app",
-  process.env.VAPID_PUBLIC_KEY ?? "",
-  process.env.VAPID_PRIVATE_KEY ?? "",
-);
+let vapidInitialized = false;
+
+/**
+ * Initialise les clés VAPID de manière paresseuse (lazy).
+ * Appelé juste avant chaque envoi — évite l'erreur au build
+ * quand les variables d'environnement ne sont pas encore disponibles.
+ */
+function ensureVapidInitialized(): void {
+  if (vapidInitialized) return;
+
+  const publicKey  = process.env.VAPID_PUBLIC_KEY;
+  const privateKey = process.env.VAPID_PRIVATE_KEY;
+  const mailto     = process.env.VAPID_MAILTO ?? "mailto:admin@taskmanage.app";
+
+  if (!publicKey || !privateKey) {
+    throw new Error(
+      "[WebPush] VAPID keys missing. Set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY in environment variables."
+    );
+  }
+
+  webpush.setVapidDetails(mailto, publicKey, privateKey);
+  vapidInitialized = true;
+}
 
 export interface PushPayload {
   title: string;
@@ -47,6 +64,7 @@ export async function sendPushNotification(
   payload: PushPayload
 ): Promise<boolean> {
   try {
+    ensureVapidInitialized();
     await webpush.sendNotification(
       {
         endpoint: subscription.endpoint,
