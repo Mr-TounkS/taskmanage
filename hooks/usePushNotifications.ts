@@ -86,7 +86,15 @@ export function usePushNotifications(): UsePushNotificationsReturn {
       const registration = await navigator.serviceWorker.ready;
       console.log("[WebPush] SW actif :", registration.active?.scriptURL);
 
-      // Étape 3 — Génère la PushSubscription avec la clé publique VAPID
+      // Étape 3 — Purge toute subscription existante (ancienne clé Firebase ou VAPID différente)
+      // Sans cette purge, Chrome lève "push service error" si les clés ont changé.
+      const existingSub = await registration.pushManager.getSubscription();
+      if (existingSub) {
+        console.log("[WebPush] Purge ancienne subscription...");
+        await existingSub.unsubscribe();
+      }
+
+      // Étape 4 — Génère la PushSubscription avec la clé publique VAPID
       const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
       if (!vapidPublicKey) {
         console.error("[WebPush] NEXT_PUBLIC_VAPID_PUBLIC_KEY manquant dans .env");
