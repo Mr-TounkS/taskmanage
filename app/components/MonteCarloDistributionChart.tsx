@@ -69,10 +69,18 @@ export default function MonteCarloDistributionChart({
   const onTimePct = Math.round((1 - probabilityOfDelay) * 100);
   const delayPct  = Math.round(probabilityOfDelay * 100);
 
+  // Si la deadline est au-delà des données, on l'ajoute comme bucket vide
+  // pour que la ligne rouge soit visible dans la plage du graphique
+  const maxDataDay = histogram[histogram.length - 1]?.day ?? 0;
+  const deadlineInRange = remainingDays <= maxDataDay;
+  const chartData = deadlineInRange
+    ? histogram
+    : [...histogram, { day: remainingDays, frequency: 0, isDelay: false }];
+
   return (
     <div className="space-y-2">
       {/* Titre + légende */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-1">
         <p className="text-xs font-semibold text-base-content/70 uppercase tracking-wide">
           Sprint completion distribution
         </p>
@@ -84,20 +92,21 @@ export default function MonteCarloDistributionChart({
           <span className="flex items-center gap-1">
             <span className="inline-block w-3 h-0.5 bg-red-500 rounded" />
             Deadline ({remainingDays}d)
+            {!deadlineInRange && <span className="text-success ml-1">✓ all simulations finish before</span>}
           </span>
         </div>
       </div>
 
       {/* Graphique */}
       <ResponsiveContainer width="100%" height={120}>
-        <BarChart data={histogram} margin={{ top: 4, right: 4, left: -28, bottom: 0 }} barCategoryGap="4%">
+        <BarChart data={chartData} margin={{ top: 4, right: 16, left: -28, bottom: 0 }} barCategoryGap="4%">
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
           <XAxis
             dataKey="day"
             tick={{ fontSize: 9, fill: '#9ca3af' }}
             tickLine={false}
             axisLine={false}
-            label={{ value: 'Days', position: 'insideBottomRight', offset: -4, fontSize: 9, fill: '#9ca3af' }}
+            tickFormatter={(v) => `${v}d`}
           />
           <YAxis
             tick={{ fontSize: 9, fill: '#9ca3af' }}

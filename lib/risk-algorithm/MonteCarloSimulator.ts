@@ -91,8 +91,9 @@ function sanitizeHistory(history: number[]): number[] {
 
 /**
  * Construit un histogramme de distribution à partir des jours simulés.
- * Divise la plage [min, max] en HISTOGRAM_BUCKETS intervalles égaux.
- * Chaque bucket contient la fréquence relative (%) des simulations.
+ * Utilise des buckets d'un jour entier pour éviter les labels dupliqués
+ * (ex: 3.0, 3.1, 3.2 → tous affichés "3" sur l'axe X).
+ * Si la plage est trop large (> 30 jours), agrège par tranches de 2 jours.
  */
 function buildHistogram(
   sortedDays: number[],
@@ -100,29 +101,29 @@ function buildHistogram(
 ): HistogramBucket[] {
   if (sortedDays.length === 0) return [];
 
-  const min = sortedDays[0];
-  const max = sortedDays[sortedDays.length - 1];
-  const range = Math.max(max - min, 1);
-  const bucketSize = range / HISTOGRAM_BUCKETS;
+  const min = Math.floor(sortedDays[0]);
+  const max = Math.ceil(sortedDays[sortedDays.length - 1]);
+  const range = max - min;
 
-  const counts = new Array(HISTOGRAM_BUCKETS).fill(0);
+  // Taille de bucket : 1 jour si plage ≤ 30, sinon agrégation
+  const bucketSize = range <= 30 ? 1 : Math.ceil(range / HISTOGRAM_BUCKETS);
+
+  const counts = new Map<number, number>();
+  for (let d = min; d <= max; d += bucketSize) counts.set(d, 0);
+
   for (const d of sortedDays) {
-    const idx = Math.min(
-      Math.floor((d - min) / bucketSize),
-      HISTOGRAM_BUCKETS - 1
-    );
-    counts[idx]++;
+    const bucket = Math.floor((Math.round(d) - min) / bucketSize) * bucketSize + min;
+    counts.set(bucket, (counts.get(bucket) ?? 0) + 1);
   }
 
   const total = sortedDays.length;
-  return counts.map((count, i) => {
-    const day = Math.round(min + i * bucketSize + bucketSize / 2);
-    return {
+  return Array.from(counts.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([day, count]) => ({
       day,
-      frequency: Math.round((count / total) * 100 * 10) / 10,
+      frequency: Math.round((count / total) * 1000) / 10,
       isDelay: day > remainingDays,
-    };
-  });
+    }));
 }
 
 // ---------------------------------------------------------------------------
