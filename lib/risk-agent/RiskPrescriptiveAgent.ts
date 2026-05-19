@@ -192,6 +192,20 @@ ${payload.metricsSnapshot.monteCarloDelayProbability !== null
       throw new Error('RiskPrescriptiveAgent: pas de tool_use dans la réponse');
     }
 
-    return toolUse.input as LLMRiskAnalysisResponse;
+    const parsed = toolUse.input as LLMRiskAnalysisResponse;
+
+    // Garde défensive : normalise les champs manquants pour éviter les crash React
+    return {
+      riskLevel: parsed.riskLevel ?? 'MEDIUM',
+      rootCauseAnalysis: parsed.rootCauseAnalysis ?? '',
+      impactAssessment: {
+        technicalImpact: parsed.impactAssessment?.technicalImpact ?? '',
+        operationalImpact: parsed.impactAssessment?.operationalImpact ?? '',
+      },
+      prescriptiveActions: Array.isArray(parsed.prescriptiveActions)
+        ? parsed.prescriptiveActions
+        : [],
+      confidenceScore: parsed.confidenceScore ?? 0.5,
+    };
   }
 }

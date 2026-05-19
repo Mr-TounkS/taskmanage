@@ -96,7 +96,7 @@ export default function PrescriptivePanel({ projectId, sgrScore }: PrescriptiveP
         <div className="flex items-center gap-1.5">
           <Brain className="w-3.5 h-3.5 text-primary" />
           <span className="text-xs font-medium">AI Prescriptive Analysis</span>
-          {analyse && (
+          {analyse && analyse.confidenceScore != null && (
             <span className="text-xs text-base-content/40">
               · confidence {Math.round(analyse.confidenceScore * 100)}%
             </span>
@@ -142,59 +142,65 @@ export default function PrescriptivePanel({ projectId, sgrScore }: PrescriptiveP
           {/* Niveau de risque */}
           <div className="flex items-center gap-2">
             <span className="text-xs text-base-content/60">Risk level:</span>
-            <span className={`text-xs font-semibold ${couleurRiskLevel(analyse.riskLevel)}`}>
-              {analyse.riskLevel}
+            <span className={`text-xs font-semibold ${couleurRiskLevel(analyse.riskLevel ?? 'LOW')}`}>
+              {analyse.riskLevel ?? '—'}
             </span>
           </div>
 
           {/* Cause racine */}
-          <div className="bg-base-200 rounded-lg p-3">
-            <p className="text-xs font-medium mb-1 text-base-content/70">Root Cause Analysis</p>
-            <p className="text-xs text-base-content/80 leading-relaxed">
-              {analyse.rootCauseAnalysis}
-            </p>
-          </div>
+          {analyse.rootCauseAnalysis && (
+            <div className="bg-base-200 rounded-lg p-3">
+              <p className="text-xs font-medium mb-1 text-base-content/70">Root Cause Analysis</p>
+              <p className="text-xs text-base-content/80 leading-relaxed">
+                {analyse.rootCauseAnalysis}
+              </p>
+            </div>
+          )}
 
           {/* Impact */}
-          <div className="grid grid-cols-2 gap-2">
-            <div className="bg-base-200 rounded-lg p-2">
-              <p className="text-xs font-medium mb-1 text-base-content/60">Technical Impact</p>
-              <p className="text-xs text-base-content/70 leading-relaxed">
-                {analyse.impactAssessment.technicalImpact}
-              </p>
+          {analyse.impactAssessment && (
+            <div className="grid grid-cols-2 gap-2">
+              <div className="bg-base-200 rounded-lg p-2">
+                <p className="text-xs font-medium mb-1 text-base-content/60">Technical Impact</p>
+                <p className="text-xs text-base-content/70 leading-relaxed">
+                  {analyse.impactAssessment.technicalImpact ?? '—'}
+                </p>
+              </div>
+              <div className="bg-base-200 rounded-lg p-2">
+                <p className="text-xs font-medium mb-1 text-base-content/60">Operational Impact</p>
+                <p className="text-xs text-base-content/70 leading-relaxed">
+                  {analyse.impactAssessment.operationalImpact ?? '—'}
+                </p>
+              </div>
             </div>
-            <div className="bg-base-200 rounded-lg p-2">
-              <p className="text-xs font-medium mb-1 text-base-content/60">Operational Impact</p>
-              <p className="text-xs text-base-content/70 leading-relaxed">
-                {analyse.impactAssessment.operationalImpact}
-              </p>
-            </div>
-          </div>
+          )}
 
           {/* Actions prescriptives */}
-          <div>
-            <p className="text-xs font-medium mb-2 text-base-content/70">Prescriptive Actions</p>
-            <div className="space-y-2">
-              {analyse.prescriptiveActions.map((action) => (
-                <div
-                  key={action.id}
-                  className="flex items-start gap-2 p-2 bg-base-200 rounded-lg"
-                >
-                  <span className={`badge badge-xs mt-0.5 shrink-0 ${couleurPriorité(action.priority)}`}>
-                    {action.priority}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-base-content/90 leading-snug">
-                      {action.actionItem}
-                    </p>
-                    <p className="text-xs text-base-content/40 mt-0.5">
-                      {action.responsibleRole} · {action.targetIndicator}
-                    </p>
+          {Array.isArray(analyse.prescriptiveActions) && analyse.prescriptiveActions.length > 0 && (
+            <div>
+              <p className="text-xs font-medium mb-2 text-base-content/70">Prescriptive Actions</p>
+              <div className="space-y-2">
+                {analyse.prescriptiveActions.map((action, idx) => (
+                  <div
+                    key={action.id ?? idx}
+                    className="flex items-start gap-2 p-2 bg-base-200 rounded-lg"
+                  >
+                    <span className={`badge badge-xs mt-0.5 shrink-0 ${couleurPriorité(action.priority ?? 'LOW')}`}>
+                      {action.priority ?? 'LOW'}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-base-content/90 leading-snug">
+                        {action.actionItem}
+                      </p>
+                      <p className="text-xs text-base-content/40 mt-0.5">
+                        {action.responsibleRole} · {action.targetIndicator}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
     </div>
