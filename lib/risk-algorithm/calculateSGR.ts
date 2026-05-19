@@ -137,7 +137,13 @@ function calculerRThroughput(tasks: SGRTask[], maintenant: Date): SGRIndicator {
 function calculerRMonteCarlo(
   sprint: SprintContext,
   maintenant: Date
-): (SGRIndicator & { probabilityOfDelay: number; medianDaysToComplete: number; p85DaysToComplete: number }) | null {
+): (SGRIndicator & {
+  probabilityOfDelay: number;
+  medianDaysToComplete: number;
+  p85DaysToComplete: number;
+  histogram: import('./MonteCarloSimulator').HistogramBucket[];
+  remainingDays: number;
+}) | null {
   const msParJour = 1000 * 60 * 60 * 24;
   const remainingDays = Math.max(
     0,
@@ -166,6 +172,8 @@ function calculerRMonteCarlo(
     probabilityOfDelay: result.probabilityOfDelay,
     medianDaysToComplete: result.medianDaysToComplete,
     p85DaysToComplete: result.p85DaysToComplete,
+    histogram: result.histogram,
+    remainingDays,
   };
 }
 

@@ -16,7 +16,11 @@ import { AlertTriangle, TrendingDown, Clock, Activity, Code2, RefreshCw } from "
 import { getProjectSGR, getSGRHistory } from "@/app/actions";
 import { SGRResult } from "@/lib/risk-algorithm/types";
 import { NotificationDecision } from "@/domain/services/NotificationDecisionService";
-import MonteCarloGauge from "./MonteCarloGauge";
+
+const MonteCarloDistributionChart = dynamic(() => import("./MonteCarloDistributionChart"), {
+  ssr: false,
+  loading: () => <div className="h-28 w-full bg-base-200 animate-pulse rounded-lg" />,
+});
 
 // PrescriptivePanel chargé en différé — appel serveur Anthropic API uniquement à la demande
 const PrescriptivePanel = dynamic(() => import("./PrescriptivePanel"), { ssr: false });
@@ -199,14 +203,14 @@ export default function SGRWidget({ projectId, refreshKey }: SGRWidgetProps) {
 
       </div>
 
-      {/* Jauge Monte-Carlo — affichée uniquement si SprintContext disponible */}
-      {result.indicateurs.monteCarlo && (
+      {/* Distribution Monte-Carlo — affichée uniquement si SprintContext disponible */}
+      {result.indicateurs.monteCarlo && result.indicateurs.monteCarlo.histogram.length > 0 && (
         <div className="border border-primary/20 rounded-xl p-3 mb-4 bg-primary/5">
-          <MonteCarloGauge
-            probabilityOfDelay={result.indicateurs.monteCarlo.probabilityOfDelay}
+          <MonteCarloDistributionChart
+            histogram={result.indicateurs.monteCarlo.histogram}
             medianDays={result.indicateurs.monteCarlo.medianDaysToComplete}
-            p85Days={result.indicateurs.monteCarlo.p85DaysToComplete}
-            size={130}
+            remainingDays={result.indicateurs.monteCarlo.remainingDays}
+            probabilityOfDelay={result.indicateurs.monteCarlo.probabilityOfDelay}
           />
         </div>
       )}

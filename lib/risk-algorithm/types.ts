@@ -107,6 +107,10 @@ export interface SGRResult {
       probabilityOfDelay: number;
       medianDaysToComplete: number;
       p85DaysToComplete: number;
+      /** Distribution pour le graphique — 20 buckets [day, frequency%, isDelay] */
+      histogram: import('./MonteCarloSimulator').HistogramBucket[];
+      /** Jours restants avant deadline (ligne rouge) */
+      remainingDays: number;
     };
   };
   /** Avertissements lisibles pour l'interface */
