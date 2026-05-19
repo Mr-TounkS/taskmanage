@@ -1,48 +1,56 @@
 /**
- * Contrat d'interface de l'Agent Prescriptif LLM.
+ * Contrat d'interface de l'Agent Prescriptif LLM — AI Risk Command Center.
  *
- * Le payload d'entrée capture le vecteur de métriques complet du projet.
- * La réponse JSON structurée est garantie par le mode structured outputs
- * de l'API Anthropic — pas de parsing fragile de texte libre.
+ * Architecture hybride (section mémoire 3.3) :
+ *   - Données déterministes (root causes, trend, forecast) : calculées depuis SGRResult
+ *   - Données génératives (summary, recommandations, catégories) : produites par le LLM
  *
- * Section mémoire : 3.3 — Agent prescriptif génératif
+ * Cette séparation garantit que le LLM interprète des faits réels plutôt que
+ * des données hallucinées — critère de crédibilité scientifique pour le jury.
  */
 
 // ---------------------------------------------------------------------------
-// Entrée de l'agent
+// Payload d'entrée
 // ---------------------------------------------------------------------------
+
+export interface RootCauseItem {
+  indicator: 'WIP' | 'CycleTime' | 'TaskAge' | 'Throughput' | 'TechDebt' | 'MonteCarlo';
+  label: string;
+  score: number;        // Score brut [0-100]
+  contribution: number; // Points de SGR imputables à cet indicateur (peut être négatif = positif)
+  direction: 'RISK' | 'SAFE';
+}
+
+export interface SGRTrend {
+  direction: 'UP' | 'DOWN' | 'STABLE';
+  delta: number;        // Variation absolue du SGR sur la période
+  period: string;       // "48h", "7d", etc.
+  previousSgr: number;
+  currentSgr: number;
+}
 
 export interface LLMRiskPayload {
   sgrScore: number;
   niveau: 'low' | 'moderate' | 'high' | 'critical';
+  // Root causes calculées depuis SGRResult (données réelles, non hallucinées)
+  rootCauses: RootCauseItem[];
+  // Tendance calculée depuis l'historique DB
+  trend: SGRTrend;
   metricsSnapshot: {
-    /** P_delai ∈ [0, 1] issu de Monte-Carlo — null si SprintContext absent */
     monteCarloDelayProbability: number | null;
-    /** Médiane en jours — null si Monte-Carlo non activé */
     medianDaysToComplete: number | null;
-    /** Score WIP normalisé [0, 100] */
-    wipScore: number;
-    /** Score Cycle Time normalisé [0, 100] */
-    cycleTimeScore: number;
-    /** Score âge des tâches [0, 100] */
-    ageScore: number;
-    /** Score débit [0, 100] */
-    throughputScore: number;
-    /** Score dette technique [0, 100] */
-    techDebtScore: number;
+    p85DaysToComplete: number | null;
+    activeWIP: number;
+    remainingWorkItems: number;
   };
   projectContext: {
-    /** Nombre de tâches en cours */
-    activeWIP: number;
-    /** Nombre d'alertes actives */
     activeAlerts: number;
-    /** Alertes textuelles actives */
     alertMessages: string[];
   };
 }
 
 // ---------------------------------------------------------------------------
-// Sortie de l'agent
+// Réponse de l'agent
 // ---------------------------------------------------------------------------
 
 export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
@@ -52,24 +60,32 @@ export type ResponsibleRole = 'Scrum Master' | 'Lead Developer' | 'QA Engineer' 
 export interface PrescriptiveAction {
   id: string;
   priority: ActionPriority;
-  /** Action concrète assignable immédiatement */
   actionItem: string;
-  /** Rôle Scrum responsable de l'exécution */
   responsibleRole: ResponsibleRole;
-  /** Indicateur SGR ciblé par cette action */
   targetIndicator: 'WIP' | 'CycleTime' | 'TaskAge' | 'Throughput' | 'TechDebt' | 'MonteCarlo' | 'Global';
+}
+
+export interface RiskCategories {
+  delivery: number;   // 0-100
+  technical: number;
+  team: number;
+  process: number;
 }
 
 export interface LLMRiskAnalysisResponse {
   riskLevel: RiskLevel;
-  /** Explication scientifique de la corrélation des métriques */
-  rootCauseAnalysis: string;
-  impactAssessment: {
-    technicalImpact: string;
-    operationalImpact: string;
-  };
-  /** Actions prescriptives ordonnées par priorité décroissante */
+  /** 2-3 phrases max — synthèse exécutive orientée décision */
+  executiveSummary: string;
+  /** Catégorisation du risque par domaine */
+  riskCategories: RiskCategories;
+  /** Actions prescriptives concrètes et immédiatement assignables */
   prescriptiveActions: PrescriptiveAction[];
-  /** Confiance de l'analyse (0–1) basée sur la richesse des métriques disponibles */
+  /** Prévision probabiliste basée sur Monte-Carlo */
+  predictiveForecast: {
+    summary: string;
+    riskIncreasing: boolean;
+  };
+  /** Raisons expliquant pourquoi la confiance est réduite */
+  confidenceReasons: string[];
   confidenceScore: number;
 }

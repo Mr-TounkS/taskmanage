@@ -513,9 +513,8 @@ export async function generateRiskPrescription(
     }
 
     try {
-        // Calcul SGR en lecture seule — PAS de sgrHistoryRepo pour éviter l'écriture
-        // en DB qui déclencherait le router.refresh() automatique de Next.js 15.
-        const { taskRepo, columnWIPConfigRepo } = makeRepos();
+        // Calcul SGR en lecture seule — PAS de sgrHistoryRepo (zéro écriture DB)
+        const { taskRepo, columnWIPConfigRepo, sgrHistoryRepo } = makeRepos();
 
         const codacyToken = process.env.CODACY_API_TOKEN;
         const resolvedTechDebt = codacyToken
@@ -526,11 +525,14 @@ export async function generateRiskPrescription(
               )
             : undefined;
 
-        const sgrResult = await new CalculateSGRUseCase(
-            taskRepo,
-            columnWIPConfigRepo
-            // sgrHistoryRepo volontairement omis → zéro écriture DB
-        ).execute({ projectId, techDebt: resolvedTechDebt ?? undefined });
+        // SGR + historique en parallèle
+        const [sgrResult, rawHistory] = await Promise.all([
+            new CalculateSGRUseCase(taskRepo, columnWIPConfigRepo /* pas de historyRepo */).execute({
+                projectId,
+                techDebt: resolvedTechDebt ?? undefined,
+            }),
+            sgrHistoryRepo.findByProject(projectId),
+        ]);
 
         const sgrEffectif = sgrResult.sgr;
         if (sgrEffectif < SEUIL_PRESCRIPTION) {
@@ -540,7 +542,13 @@ export async function generateRiskPrescription(
         const taches = await taskRepo.findByProject(projectId);
         const activeWIP = taches.filter((t) => t.status === 'In Progress').length;
 
-        const payload = buildPayload(sgrResult, activeWIP);
+        // Historique converti pour le calcul de tendance
+        const history = rawHistory.map(h => ({
+            sgr: h.sgr,
+            calculatedAt: new Date(h.createdAt),
+        }));
+
+        const payload = buildPayload(sgrResult, activeWIP, history);
         const agent = new RiskPrescriptiveAgent();
         return await agent.analyze(payload);
     } catch (error) {

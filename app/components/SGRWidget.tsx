@@ -241,7 +241,12 @@ export default function SGRWidget({ projectId, refreshKey }: SGRWidgetProps) {
       </div>
 
       {/* Agent prescriptif LLM — activé à la demande */}
-      <PrescriptivePanel projectId={projectId} sgrScore={result.sgr} />
+      <PrescriptivePanel
+        projectId={projectId}
+        sgrScore={result.sgr}
+        sgrResult={result}
+        sgrHistory={historique.map(h => ({ sgr: h.sgr, calculatedAt: h.createdAt }))}
+      />
     </div>
   );
 }
