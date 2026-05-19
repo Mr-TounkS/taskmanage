@@ -14,11 +14,11 @@ import { RootCauseItem, SGRTrend } from './types';
 export function computeRootCauses(sgrResult: SGRResult): RootCauseItem[] {
   const ind = sgrResult.indicateurs;
   const items: RootCauseItem[] = [
-    { indicator: 'WIP',        label: 'WIP Saturation',   score: ind.wip.score,        contribution: Math.round(ind.wip.contribution * 0.5),        direction: ind.wip.score > 30        ? 'RISK' : 'SAFE' },
-    { indicator: 'CycleTime',  label: 'Cycle Time',       score: ind.cycleTime.score,  contribution: Math.round(ind.cycleTime.contribution * 0.5),  direction: ind.cycleTime.score > 30  ? 'RISK' : 'SAFE' },
-    { indicator: 'TaskAge',    label: 'Task Age',         score: ind.age.score,        contribution: Math.round(ind.age.contribution * 0.5),        direction: ind.age.score > 30        ? 'RISK' : 'SAFE' },
-    { indicator: 'Throughput', label: 'Throughput',       score: ind.throughput.score, contribution: Math.round(ind.throughput.contribution * 0.5), direction: ind.throughput.score > 30 ? 'RISK' : 'SAFE' },
-    { indicator: 'TechDebt',   label: 'Technical Debt',   score: ind.tech.score,       contribution: Math.round(ind.tech.contribution * 0.2),       direction: ind.tech.score > 30       ? 'RISK' : 'SAFE' },
+    { indicator: 'WIP',        label: 'WIP Saturation',   score: Math.round(ind.wip.score),        contribution: Math.round(ind.wip.contribution * 0.5),        direction: ind.wip.score > 30        ? 'RISK' : 'SAFE' },
+    { indicator: 'CycleTime',  label: 'Cycle Time',       score: Math.round(ind.cycleTime.score),  contribution: Math.round(ind.cycleTime.contribution * 0.5),  direction: ind.cycleTime.score > 30  ? 'RISK' : 'SAFE' },
+    { indicator: 'TaskAge',    label: 'Task Age',         score: Math.round(ind.age.score),        contribution: Math.round(ind.age.contribution * 0.5),        direction: ind.age.score > 30        ? 'RISK' : 'SAFE' },
+    { indicator: 'Throughput', label: 'Throughput',       score: Math.round(ind.throughput.score), contribution: Math.round(ind.throughput.contribution * 0.5), direction: ind.throughput.score > 30 ? 'RISK' : 'SAFE' },
+    { indicator: 'TechDebt',   label: 'Technical Debt',   score: Math.round(ind.tech.score),       contribution: Math.round(ind.tech.contribution * 0.2),       direction: ind.tech.score > 30       ? 'RISK' : 'SAFE' },
   ];
   if (ind.monteCarlo) {
     items.push({
