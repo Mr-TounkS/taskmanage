@@ -183,31 +183,61 @@ export default function PrescriptivePanel({
       {/* Root Cause Tree — affiché dès que SGRResult est disponible, sans cliquer */}
       {rootCauses.length > 0 && (
         <div className="mb-3 bg-base-200 rounded-xl p-3">
+          {/* En-tête avec titre et badge de tendance */}
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs font-semibold text-base-content/70 flex items-center gap-1">
               <BarChart3 className="w-3 h-3" /> SGR {sgrScore} — Root Cause Breakdown
             </p>
-            {trend && <TrendBadge direction={trend.direction} delta={trend.delta} />}
+            {trend && trend.direction !== 'STABLE' && (
+              <div className="flex flex-col items-end">
+                <TrendBadge direction={trend.direction} delta={trend.delta} />
+                <span className="text-xs text-base-content/40">
+                  {trend.direction === 'DOWN' ? '✓ Risk improved' : '⚠ Risk worsened'} over {trend.period}
+                </span>
+              </div>
+            )}
           </div>
+
+          {/* Légende des colonnes */}
+          <div className="flex items-center gap-2 mb-1 px-0.5">
+            <span className="text-xs text-base-content/40 w-24 shrink-0">Indicator</span>
+            <span className="text-xs text-base-content/40 flex-1 text-center">Severity (0–100)</span>
+            <span className="text-xs text-base-content/40 w-16 text-right">SGR impact</span>
+          </div>
+
+          {/* Lignes root causes */}
           <div className="space-y-1.5">
             {rootCauses.map(rc => (
               <div key={rc.indicator} className="flex items-center gap-2">
                 <span className={`text-xs w-24 shrink-0 ${rc.direction === 'RISK' ? 'text-error/80' : 'text-success/80'}`}>
                   {rc.label}
                 </span>
-                <progress
-                  className={`progress flex-1 h-1.5 ${rc.direction === 'RISK' ? 'progress-error' : 'progress-success'}`}
-                  value={rc.score} max={100}
-                />
-                <span className={`text-xs tabular-nums w-10 text-right font-medium ${rc.direction === 'RISK' ? 'text-error' : 'text-success'}`}>
-                  {rc.direction === 'RISK' ? '+' : ''}{rc.contribution}
+                <div className="flex-1 flex items-center gap-1">
+                  <progress
+                    className={`progress flex-1 h-1.5 ${rc.direction === 'RISK' ? 'progress-error' : 'progress-success'}`}
+                    value={rc.score} max={100}
+                  />
+                  <span className="text-xs text-base-content/40 w-6 tabular-nums text-right">{rc.score}</span>
+                </div>
+                <span
+                  className={`text-xs tabular-nums w-16 text-right font-medium ${rc.direction === 'RISK' ? 'text-error' : 'text-success'}`}
+                  title={`This indicator adds ${rc.contribution} points to the SGR score`}
+                >
+                  {rc.direction === 'RISK' ? `+${rc.contribution} pts` : rc.contribution > 0 ? `-${rc.contribution} pts` : '0 pts'}
                 </span>
               </div>
             ))}
           </div>
-          {trend && (
-            <p className="text-xs text-base-content/40 mt-2 text-right">
-              {trend.previousSgr} → {trend.currentSgr} over {trend.period}
+
+          {/* Explication pédagogique */}
+          <p className="text-xs text-base-content/35 mt-2 italic">
+            "SGR impact" = contribution de chaque indicateur aux {sgrScore} points du score global
+          </p>
+
+          {/* Trend détaillé */}
+          {trend && trend.direction !== 'STABLE' && (
+            <p className="text-xs text-base-content/40 mt-1 text-right">
+              SGR: {trend.previousSgr} → {trend.currentSgr} ({trend.delta > 0 ? '+' : ''}{trend.delta} pts over {trend.period})
             </p>
           )}
         </div>
