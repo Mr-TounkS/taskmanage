@@ -17,7 +17,7 @@ import { Brain, AlertTriangle, Loader2, Zap, TrendingUp, TrendingDown, Minus,
          ChevronDown, ChevronUp, Target, BarChart3, Lightbulb, ShieldAlert } from "lucide-react";
 import { generateRiskPrescription, PrescriptionError } from "@/app/actions";
 import { LLMRiskAnalysisResponse, ActionPriority, RiskLevel } from "@/lib/risk-agent/types";
-import { computeRootCauses, computeTrend } from "@/lib/risk-agent/RiskPrescriptiveAgent";
+import { computeRootCauses, computeTrend } from "@/lib/risk-agent/riskUtils";
 import { SGRResult } from "@/lib/risk-algorithm/types";
 
 // ---------------------------------------------------------------------------
