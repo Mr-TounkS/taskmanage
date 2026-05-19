@@ -34,6 +34,9 @@ import { fetchCodacyMetrics } from "@/lib/codacy-api";
 import { RiskPrescriptiveAgent, buildPayload, SEUIL_PRESCRIPTION } from "@/lib/risk-agent/RiskPrescriptiveAgent";
 import { LLMRiskAnalysisResponse } from "@/lib/risk-agent/types";
 
+// Service de routage des notifications (Clean Architecture — Domain Service)
+import { NotificationDecisionService } from "@/domain/services/NotificationDecisionService";
+
 // Push notifications
 import { sendPushToSubscriptions } from "@/lib/push-notifications";
 import { PrismaSubscriptionRepository } from "@/infrastructure/repositories/PrismaSubscriptionRepository";
@@ -230,12 +233,19 @@ export async function getProjectSGR(
             techDebt: resolvedTechDebt,
         });
 
-        // Déclenche une notification push si le SGR dépasse le seuil d'alerte
-        if (result.sgr >= 60) {
+        // Routage des notifications via NotificationDecisionService (domain service)
+        const decision = NotificationDecisionService.decide({
+            sgrScore: result.sgr,
+            niveau: result.niveau,
+            alertes: result.alertes,
+            monteCarloDelayProbability: result.indicateurs.monteCarlo?.probabilityOfDelay ?? null,
+        });
+        if (decision.shouldPush) {
             await notifyProjectMembersPush(projectId, result.sgr, result.niveau);
         }
 
-        return result;
+        // Enrichit le résultat SGR avec la décision de notification pour l'UI
+        return { ...result, notificationDecision: decision };
     } catch (error) {
         console.error('[SGR Error]', error);
         throw new Error(`Erreur lors du calcul du SGR: ${error instanceof Error ? error.message : String(error)}`);

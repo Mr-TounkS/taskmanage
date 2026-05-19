@@ -15,6 +15,8 @@ import dynamic from "next/dynamic";
 import { AlertTriangle, TrendingDown, Clock, Activity, Code2, RefreshCw } from "lucide-react";
 import { getProjectSGR, getSGRHistory } from "@/app/actions";
 import { SGRResult } from "@/lib/risk-algorithm/types";
+import { NotificationDecision } from "@/domain/services/NotificationDecisionService";
+import MonteCarloGauge from "./MonteCarloGauge";
 
 // PrescriptivePanel chargé en différé — appel serveur Anthropic API uniquement à la demande
 const PrescriptivePanel = dynamic(() => import("./PrescriptivePanel"), { ssr: false });
@@ -78,7 +80,7 @@ const LABELS_INDICATEURS: Record<string, { label: string; icon: React.ReactNode 
 type PointHistorique = Awaited<ReturnType<typeof getSGRHistory>>[number];
 
 export default function SGRWidget({ projectId, refreshKey }: SGRWidgetProps) {
-  const [result, setResult] = useState<SGRResult | null>(null);
+  const [result, setResult] = useState<(SGRResult & { notificationDecision?: NotificationDecision }) | null>(null);
   const [historique, setHistorique] = useState<PointHistorique[]>([]);
   const [loading, setLoading] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -142,8 +144,8 @@ export default function SGRWidget({ projectId, refreshKey }: SGRWidgetProps) {
         </button>
       </div>
 
-      {/* Score principal */}
-      <div className="flex items-center gap-3 mb-4">
+      {/* Score principal + badge de décision */}
+      <div className="flex items-center gap-3 mb-3">
         <div className="text-4xl font-bold tabular-nums">
           {result.sgr}
         </div>
@@ -153,6 +155,20 @@ export default function SGRWidget({ projectId, refreshKey }: SGRWidgetProps) {
             {result.niveau.toUpperCase()}
           </span>
         </div>
+        {result.notificationDecision && (
+          <div className="ml-auto flex flex-col items-end gap-1">
+            <span className={`badge badge-sm ${result.notificationDecision.type === 'SILENT' ? 'badge-success' : result.notificationDecision.type === 'INSIGHT' ? 'badge-warning' : 'badge-error'}`}>
+              {result.notificationDecision.type === 'SILENT' ? 'Monitoring'
+                : result.notificationDecision.type === 'INSIGHT' ? '⚡ Insight'
+                : '🚨 Alert'}
+            </span>
+            <span className="text-xs text-base-content/40 text-right max-w-32 leading-tight">
+              {result.notificationDecision.type === 'SILENT' ? 'No action needed'
+                : result.notificationDecision.type === 'INSIGHT' ? 'Proactive action suggested'
+                : 'Immediate action required'}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Barre de progression globale */}
@@ -185,28 +201,19 @@ export default function SGRWidget({ projectId, refreshKey }: SGRWidgetProps) {
           );
         })}
 
-        {/* Indicateur Monte-Carlo — affiché uniquement si SprintContext disponible */}
-        {result.indicateurs.monteCarlo && (() => {
-          const mc = result.indicateurs.monteCarlo!;
-          const meta = LABELS_INDICATEURS.monteCarlo;
-          return (
-            <div className="flex items-center gap-2 pt-1 border-t border-base-300">
-              <span className="text-primary">{meta.icon}</span>
-              <span className="text-xs text-primary/80 w-20 shrink-0 font-medium">
-                {meta.label}
-              </span>
-              <progress
-                className={`progress flex-1 h-1.5 ${couleurBarre(mc.score)}`}
-                value={mc.score}
-                max={100}
-              />
-              <span className="text-xs tabular-nums w-8 text-right">
-                {Math.round(mc.probabilityOfDelay * 100)}%
-              </span>
-            </div>
-          );
-        })()}
       </div>
+
+      {/* Jauge Monte-Carlo — affichée uniquement si SprintContext disponible */}
+      {result.indicateurs.monteCarlo && (
+        <div className="border border-primary/20 rounded-xl p-3 mb-4 bg-primary/5">
+          <MonteCarloGauge
+            probabilityOfDelay={result.indicateurs.monteCarlo.probabilityOfDelay}
+            medianDays={result.indicateurs.monteCarlo.medianDaysToComplete}
+            p85Days={result.indicateurs.monteCarlo.p85DaysToComplete}
+            size={130}
+          />
+        </div>
+      )}
 
       {/* Alertes actives */}
       {result.alertes.length > 0 && (
