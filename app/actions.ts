@@ -513,16 +513,30 @@ export async function generateRiskPrescription(
     }
 
     try {
-        // Réutilise getProjectSGR pour garantir le même score que l'UI
-        // (Codacy, GitHub, Monte-Carlo — toutes les métriques sont identiques)
-        const sgrResult = await getProjectSGR(projectId);
+        // Calcul SGR en lecture seule — PAS de sgrHistoryRepo pour éviter l'écriture
+        // en DB qui déclencherait le router.refresh() automatique de Next.js 15.
+        const { taskRepo, columnWIPConfigRepo } = makeRepos();
+
+        const codacyToken = process.env.CODACY_API_TOKEN;
+        const resolvedTechDebt = codacyToken
+            ? await fetchCodacyMetrics(
+                process.env.CODACY_ORG ?? 'Mr-TounkS',
+                process.env.CODACY_REPO ?? 'taskmanage',
+                codacyToken
+              )
+            : undefined;
+
+        const sgrResult = await new CalculateSGRUseCase(
+            taskRepo,
+            columnWIPConfigRepo
+            // sgrHistoryRepo volontairement omis → zéro écriture DB
+        ).execute({ projectId, techDebt: resolvedTechDebt ?? undefined });
 
         const sgrEffectif = sgrResult.sgr;
         if (sgrEffectif < SEUIL_PRESCRIPTION) {
             return { type: 'BELOW_THRESHOLD', sgr: sgrEffectif, threshold: SEUIL_PRESCRIPTION };
         }
 
-        const { taskRepo } = makeRepos();
         const taches = await taskRepo.findByProject(projectId);
         const activeWIP = taches.filter((t) => t.status === 'In Progress').length;
 
