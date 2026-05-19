@@ -503,18 +503,16 @@ export async function generateRiskPrescription(
     }
 
     try {
-        const { taskRepo, columnWIPConfigRepo, sgrHistoryRepo } = makeRepos();
+        // Réutilise getProjectSGR pour garantir le même score que l'UI
+        // (Codacy, GitHub, Monte-Carlo — toutes les métriques sont identiques)
+        const sgrResult = await getProjectSGR(projectId);
 
-        const sgrResult = await new CalculateSGRUseCase(taskRepo, columnWIPConfigRepo, sgrHistoryRepo).execute({
-            projectId,
-        });
-
-        // Utilise le SGR recalculé, ou le SGR passé par le client comme fallback
-        const sgrEffectif = sgrResult.sgr ?? currentSgr ?? 0;
+        const sgrEffectif = sgrResult.sgr;
         if (sgrEffectif < SEUIL_PRESCRIPTION) {
             return { type: 'BELOW_THRESHOLD', sgr: sgrEffectif, threshold: SEUIL_PRESCRIPTION };
         }
 
+        const { taskRepo } = makeRepos();
         const taches = await taskRepo.findByProject(projectId);
         const activeWIP = taches.filter((t) => t.status === 'In Progress').length;
 

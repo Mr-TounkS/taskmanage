@@ -63,7 +63,7 @@ export default function PrescriptivePanel({ projectId, sgrScore }: PrescriptiveP
     setErreur(null);
     setAnalyse(null);
     try {
-      const result = await generateRiskPrescription(projectId, sgrScore);
+      const result = await generateRiskPrescription(projectId);
       // Résultat valide
       if ('riskLevel' in result) {
         setAnalyse(result as LLMRiskAnalysisResponse);
