@@ -1,119 +1,145 @@
 /**
- * Burndown Chart Prédictif — calcul des séries de données.
+ * Actual Work Burndown — basé sur les dates réelles des tâches.
  *
- * Trois courbes (section mémoire 3.2) :
- *   1. Idéale   : décroissance linéaire de N tâches → 0 sur la durée du sprint
- *   2. Réelle   : tâches restantes réelles jour par jour (historique)
- *   3. Projection Monte-Carlo : zone ombrée [médiane → P85] depuis aujourd'hui
+ * Principe (section mémoire 3.2) :
+ *   Début   = min(task.startedAt) — date RÉELLE observable en base
+ *   Fin     = aujourd'hui + medianDays (Monte-Carlo) — date PROJETÉE
+ *   Idéale  = droite de (total tâches au début réel) → (0 à la médiane MC)
+ *   Réelle  = tâches non terminées ce jour-là (calculé depuis completedAt)
+ *   Zone MC = fourchette [médiane → P85] depuis aujourd'hui
  *
- * Justification scientifique :
- *   Tout écart entre courbe réelle et ligne idéale est corrélé au SGR.
- *   La zone de projection matérialise l'incertitude stochastique calculée
- *   par Monte-Carlo — c'est la preuve visuelle du moteur probabiliste.
+ * Aucune hypothèse artificielle sur la durée de sprint.
+ * Chaque valeur est soit observable en base, soit calculée par Monte-Carlo.
  */
 
 export interface BurndownPoint {
-  /** Label affiché sur l'axe X (ex: "J-7", "Today", "J+3") */
+  /** Label axe X (ex: "May 01", "Today", "+3d") */
   label: string;
-  /** Index du jour relatif à aujourd'hui (négatif = passé, 0 = today, positif = futur) */
+  /** Index relatif à aujourd'hui — négatif = passé, 0 = today, positif = futur */
   dayIndex: number;
-  /** Ligne idéale : décroissance linéaire [0, total] */
+  /** Ligne idéale : décroissance de totalAtStart → 0 à la médiane MC */
   ideal: number | null;
-  /** Courbe réelle : tâches restantes ce jour-là (null pour les jours futurs) */
+  /** Courbe réelle : tâches restantes ce jour-là (null pour les futurs) */
   actual: number | null;
-  /** Borne basse de la projection MC (médiane) — null pour jours passés */
+  /** Borne basse projection MC (médiane — optimiste) */
   projLow: number | null;
-  /** Borne haute de la projection MC (P85) — null pour jours passés */
+  /** Borne haute projection MC (P85 — pessimiste) */
   projHigh: number | null;
-  /** true = aujourd'hui */
+  /** true = ligne verticale "Today" */
   isToday: boolean;
 }
 
 export interface BurndownInput {
   tasks: Array<{
     status: string;
-    completedAt: Date | null;
     startedAt: Date | null;
+    completedAt: Date | null;
   }>;
-  /** Jours restants avant la deadline (depuis Monte-Carlo) */
-  remainingDays: number;
-  /** Médiane de complétion en jours (depuis Monte-Carlo) */
   medianDaysToComplete: number;
-  /** P85 de complétion en jours (depuis Monte-Carlo) */
   p85DaysToComplete: number;
-  /** Date de référence (utile pour les tests) */
   dateReference?: Date;
 }
 
-export function computeBurndown(input: BurndownInput): BurndownPoint[] {
+export type BurndownStatus =
+  | { type: 'ok'; points: BurndownPoint[]; sprintStartDate: Date }
+  | { type: 'no_work_started' }
+  | { type: 'completed'; completedAt: Date };
+
+/**
+ * Formate une date en "May 01" pour l'axe X.
+ */
+function formatLabel(date: Date): string {
+  return date.toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
+}
+
+/**
+ * Calcule les données du burndown depuis les dates réelles.
+ * Retourne un status discriminé pour gérer les cas particuliers honnêtement.
+ */
+export function computeBurndown(input: BurndownInput): BurndownStatus {
   const maintenant = input.dateReference ?? new Date();
   const msParJour = 1000 * 60 * 60 * 24;
 
-  const totalTasks = input.tasks.length;
-  if (totalTasks === 0) return [];
+  const { tasks, medianDaysToComplete, p85DaysToComplete } = input;
 
-  const currentRemaining = input.tasks.filter(t => t.status !== 'Done').length;
+  // --- Cas : aucune tâche démarrée ---
+  const tachesDemarrees = tasks.filter(t => t.startedAt !== null);
+  if (tachesDemarrees.length === 0) {
+    return { type: 'no_work_started' };
+  }
 
-  // Fenêtre passée : max 14 jours en arrière (ou depuis la 1ère tâche démarrée)
-  const premiereDate = input.tasks
-    .map(t => t.startedAt ?? t.completedAt)
-    .filter((d): d is Date => d !== null)
-    .reduce<Date | null>((min, d) => (!min || d < min ? d : min), null);
-
-  const joursPassesBruts = premiereDate
-    ? Math.ceil((maintenant.getTime() - premiereDate.getTime()) / msParJour)
-    : 0;
-  const joursPassés = Math.min(joursPassesBruts, 14);
-
-  // Fenêtre future : jusqu'au P85 ou la deadline (max 21 jours)
-  const joursFuturs = Math.min(
-    Math.max(input.p85DaysToComplete, input.remainingDays),
-    21
+  // Date de début réelle = première tâche démarrée
+  const sprintStartDate = tachesDemarrees.reduce<Date>((min, t) =>
+    t.startedAt! < min ? t.startedAt! : min,
+    tachesDemarrees[0].startedAt!
   );
 
-  const points: BurndownPoint[] = [];
-  const totalJours = joursPassés + joursFuturs + 1;
+  const currentRemaining = tasks.filter(t => t.status !== 'Done').length;
 
-  for (let i = -joursPassés; i <= joursFuturs; i++) {
+  // --- Cas : projet complètement terminé ---
+  if (currentRemaining === 0) {
+    const lastCompleted = tasks
+      .filter(t => t.completedAt !== null)
+      .reduce<Date>((max, t) => t.completedAt! > max ? t.completedAt! : max,
+        new Date(0));
+    return { type: 'completed', completedAt: lastCompleted };
+  }
+
+  // Nombre total de tâches existantes au début du sprint
+  // (toutes les tâches actuelles — approximation défendable pour un projet sans backlog dynamique)
+  const totalTasks = tasks.length;
+
+  // --- Construction de la série temporelle ---
+  const joursDepuisDebut = Math.ceil(
+    (maintenant.getTime() - sprintStartDate.getTime()) / msParJour
+  );
+
+  // Fenêtre passée : depuis sprintStart jusqu'à aujourd'hui
+  const joursPasse = Math.max(joursDepuisDebut, 0);
+
+  // Fenêtre future : jusqu'au P85 ou 21 jours max
+  const joursFuturs = Math.min(Math.max(p85DaysToComplete, 3), 21);
+
+  // Durée totale pour la ligne idéale : de sprintStart à sprintStart + medianDays
+  const idealDuration = Math.max(joursPasse + medianDaysToComplete, 1);
+
+  const points: BurndownPoint[] = [];
+
+  for (let i = -joursPasse; i <= joursFuturs; i++) {
     const jour = new Date(maintenant.getTime() + i * msParJour);
     const isToday = i === 0;
 
-    // Label lisible
-    const label = isToday ? 'Today'
-      : i < 0 ? `J${i}`
-      : `J+${i}`;
+    // Label
+    const label = isToday ? 'Today' : formatLabel(jour);
 
-    // Ligne idéale : décroissance linéaire de totalTasks à 0 sur la durée du sprint
-    // On part de joursPassés jours avant aujourd'hui et on finit à remainingDays après
-    const sprintDuration = joursPassés + input.remainingDays;
-    const idealProgress = (joursPassés + i) / Math.max(sprintDuration, 1);
+    // Progression depuis le début du sprint (pour la ligne idéale)
+    const joursDepuisStartCourant = joursPasse + i;
+    const idealProgress = Math.min(joursDepuisStartCourant / idealDuration, 1);
     const ideal = Math.max(0, Math.round(totalTasks * (1 - idealProgress)));
 
-    // Courbe réelle (jours passés + aujourd'hui)
+    // Courbe réelle — calculée depuis les completedAt réels
     let actual: number | null = null;
     if (i <= 0) {
-      actual = input.tasks.filter(t => {
-        if (t.status !== 'Done' || t.completedAt === null) return true; // pas terminée
-        return t.completedAt > jour; // terminée après ce jour = encore "restante" ce jour-là
+      actual = tasks.filter(t => {
+        if (t.status !== 'Done' || t.completedAt === null) return true;
+        return t.completedAt > jour;
       }).length;
     }
 
-    // Zone de projection Monte-Carlo (jours futurs uniquement)
+    // Zone de projection Monte-Carlo — uniquement pour les jours futurs
     let projLow: number | null = null;
     let projHigh: number | null = null;
-    if (i > 0) {
-      // Projection médiane : décroissance linéaire sur medianDays
-      projLow = i <= input.medianDaysToComplete
-        ? Math.max(0, Math.round(currentRemaining * (1 - i / input.medianDaysToComplete)))
+    if (i > 0 && currentRemaining > 0) {
+      projLow = medianDaysToComplete > 0
+        ? Math.max(0, Math.round(currentRemaining * (1 - i / medianDaysToComplete)))
         : 0;
-      // Projection P85 : décroissance plus lente sur p85Days
-      projHigh = i <= input.p85DaysToComplete
-        ? Math.max(0, Math.round(currentRemaining * (1 - i / input.p85DaysToComplete)))
+      projHigh = p85DaysToComplete > 0
+        ? Math.max(0, Math.round(currentRemaining * (1 - i / p85DaysToComplete)))
         : 0;
     }
 
     points.push({ label, dayIndex: i, ideal, actual, projLow, projHigh, isToday });
   }
 
-  return points;
+  return { type: 'ok', points, sprintStartDate };
 }

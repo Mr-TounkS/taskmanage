@@ -331,11 +331,12 @@ export async function upsertWIPConfigs(
 }
 
 /**
- * Calcule les données du Burndown Chart prédictif pour un projet.
- * Combine l'historique réel des tâches et les projections Monte-Carlo.
+ * Calcule les données du Burndown Chart basé sur les dates réelles des tâches.
+ * Sprint start = première tâche démarrée (observable en base).
+ * Projection = Monte-Carlo depuis les données historiques réelles.
  */
 export async function getBurndownData(projectId: string) {
-    const { taskRepo, columnWIPConfigRepo } = makeRepos();
+    const { taskRepo } = makeRepos();
     try {
         const toDate = (v: unknown): Date | null => {
             if (v == null) return null;
@@ -351,8 +352,7 @@ export async function getBurndownData(projectId: string) {
             startedAt: toDate(t.startedAt),
         }));
 
-        // Calcul Monte-Carlo pour les projections
-        const terminees = tasks.filter(t => t.completedAt !== null);
+        // Débit historique depuis les dates réelles de complétion
         const msParJour = 1000 * 60 * 60 * 24;
         const maintenant = new Date();
         const debut30j = new Date(maintenant.getTime() - 30 * msParJour);
@@ -361,22 +361,24 @@ export async function getBurndownData(projectId: string) {
             const jour = new Date(debut30j.getTime() + d * msParJour);
             throughputMap.set(jour.toISOString().slice(0, 10), 0);
         }
-        for (const t of terminees) {
+        for (const t of tasks.filter(x => x.completedAt !== null)) {
             const cle = t.completedAt!.toISOString().slice(0, 10);
             if (throughputMap.has(cle)) throughputMap.set(cle, (throughputMap.get(cle) ?? 0) + 1);
         }
         const throughputHistory = Array.from(throughputMap.values()).filter(v => v > 0);
 
-        let medianDays = 14;
-        let p85Days = 21;
         const remainingWorkItems = tasks.filter(t => t.status !== 'Done').length;
 
-        if (throughputHistory.length >= 3) {
+        // Monte-Carlo uniquement si historique suffisant
+        let medianDays = Math.max(remainingWorkItems, 3);
+        let p85Days = Math.max(remainingWorkItems * 2, 7);
+
+        if (throughputHistory.length >= 3 && remainingWorkItems > 0) {
             const { MonteCarloSimulator } = await import('@/lib/risk-algorithm/MonteCarloSimulator');
             const mc = MonteCarloSimulator.simulate({
                 throughputHistory,
                 remainingWorkItems,
-                remainingDays: 14,
+                remainingDays: 30,
                 iterations: 5_000,
             });
             medianDays = mc.medianDaysToComplete;
@@ -384,17 +386,12 @@ export async function getBurndownData(projectId: string) {
         }
 
         const { computeBurndown } = await import('@/lib/risk-algorithm/burndown');
-        const points = computeBurndown({
-            tasks,
-            remainingDays: 14,
-            medianDaysToComplete: medianDays,
-            p85DaysToComplete: p85Days,
-        });
+        const result = computeBurndown({ tasks, medianDaysToComplete: medianDays, p85DaysToComplete: p85Days });
 
-        return points;
+        return result;
     } catch (error) {
         console.error('[Burndown Error]', error);
-        return [];
+        return { type: 'no_work_started' as const };
     }
 }
 
