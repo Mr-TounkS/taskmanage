@@ -92,8 +92,6 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
 
             // Sauvegarde en cache pour les sessions offline
             saveToCache(cacheKeyProject(projectId), project)
-            // Déclenche le recalcul du SGR à chaque rechargement du projet
-            setSgrRefreshKey(k => k + 1)
         } catch (error) {
             console.error("Error loading project:", error);
             // Fallback cache si la requête échoue

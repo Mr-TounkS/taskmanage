@@ -12,7 +12,7 @@
  * Section mémoire : 3.4 — Interface du SAD prescriptif
  */
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Brain, AlertTriangle, ChevronDown, ChevronUp, Loader2, Zap } from "lucide-react";
 import { generateRiskPrescription, PrescriptionError } from "@/app/actions";
 import { LLMRiskAnalysisResponse, ActionPriority } from "@/lib/risk-agent/types";
@@ -57,8 +57,25 @@ export default function PrescriptivePanel({ projectId, sgrScore }: PrescriptiveP
   const [loading, setLoading]         = useState(false);
   const [erreur, setErreur]           = useState<string | null>(null);
   const [expanded, setExpanded]       = useState(true);
+  const [cooldownLeft, setCooldownLeft] = useState(0);
+  const cooldownTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Cooldown 3 min entre deux appels LLM pour éviter les coûts accidentels
+  const COOLDOWN_SECONDS = 180;
+
+  const startCooldown = () => {
+    setCooldownLeft(COOLDOWN_SECONDS);
+    const timer = setInterval(() => {
+      setCooldownLeft(prev => {
+        if (prev <= 1) { clearInterval(timer); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
+    cooldownTimer.current = timer;
+  };
 
   const lancer = async () => {
+    if (loading || cooldownLeft > 0) return;
     setLoading(true);
     setErreur(null);
     setAnalyse(null);
@@ -83,6 +100,7 @@ export default function PrescriptivePanel({ projectId, sgrScore }: PrescriptiveP
       setErreur("Analysis failed. Check server logs.");
     } finally {
       setLoading(false);
+      startCooldown(); // démarre le cooldown après chaque appel (succès ou erreur)
     }
   };
 
@@ -114,16 +132,20 @@ export default function PrescriptivePanel({ projectId, sgrScore }: PrescriptiveP
           )}
           <button
             onClick={lancer}
-            disabled={loading}
-            className={`btn btn-xs ${sgrScore >= seuil ? 'btn-primary' : 'btn-ghost'}`}
-            title={sgrScore < seuil ? `SGR < ${seuil} — low risk` : 'Run AI analysis'}
+            disabled={loading || cooldownLeft > 0}
+            className={`btn btn-xs ${sgrScore >= seuil && cooldownLeft === 0 ? 'btn-primary' : 'btn-ghost'}`}
+            title={
+              cooldownLeft > 0
+                ? `Available in ${cooldownLeft}s`
+                : sgrScore < seuil ? `SGR < ${seuil} — low risk` : 'Run AI analysis'
+            }
           >
             {loading ? (
               <Loader2 className="w-3 h-3 animate-spin" />
             ) : (
               <Zap className="w-3 h-3" />
             )}
-            {loading ? 'Analyzing…' : 'Analyze'}
+            {loading ? 'Analyzing…' : cooldownLeft > 0 ? `${cooldownLeft}s` : 'Analyze'}
           </button>
         </div>
       </div>
