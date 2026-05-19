@@ -4,57 +4,43 @@
  * MonteCarloGauge — Jauge semi-circulaire SVG de probabilité de livraison.
  *
  * Affiche la probabilité de livraison à temps (= 1 - P_delai) issue de la
- * simulation Monte-Carlo. La visualisation est volontairement distincte des
- * barres de progression classiques pour signaler au jury que c'est une
- * métrique stochastique, pas une métrique déterministe.
+ * simulation Monte-Carlo. Visualisation stochastique distincte des barres
+ * déterministes pour signifier au jury la nature probabiliste de la métrique.
  *
  * Choix SVG pur : aucune dépendance externe, bundle minimal, SSR-safe.
  * Section mémoire : 3.2 — Visualisation du moteur stochastique
  */
 
-// ---------------------------------------------------------------------------
-// Props
-// ---------------------------------------------------------------------------
-
 interface MonteCarloGaugeProps {
-  /** Probabilité de retard ∈ [0, 1] issue de MonteCarloSimulator */
   probabilityOfDelay: number;
-  /** Médiane des durées simulées en jours */
   medianDays: number;
-  /** 85e percentile (Service Level Expectation) en jours */
   p85Days: number;
-  /** Taille de la jauge en px (diamètre) */
   size?: number;
 }
 
-// ---------------------------------------------------------------------------
-// Constantes visuelles
-// ---------------------------------------------------------------------------
+const STROKE = 11;
+// Arc de 200° centré en haut : démarre à 170° et finit à -10° (sens antihoraire)
+const START_DEG = 190;
+const END_DEG   = -10;
+const SWEEP     = START_DEG - END_DEG; // 200°
 
-const STROKE_WIDTH = 10;
-const GAP_DEGREES = 60; // degrés laissés vides en bas de la demi-lune
+function toRad(deg: number) { return (deg * Math.PI) / 180; }
 
-// ---------------------------------------------------------------------------
-// Utilitaires SVG
-// ---------------------------------------------------------------------------
-
-/** Convertit des degrés en coordonnées sur un cercle de rayon r centré en (cx, cy) */
-function polarToCartesian(cx: number, cy: number, r: number, deg: number) {
-  const rad = ((deg - 90) * Math.PI) / 180;
-  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+function point(cx: number, cy: number, r: number, deg: number) {
+  return {
+    x: cx + r * Math.cos(toRad(deg)),
+    y: cy + r * Math.sin(toRad(deg)),
+  };
 }
 
-/** Génère le path SVG d'un arc de cercle */
-function arcPath(cx: number, cy: number, r: number, startDeg: number, endDeg: number): string {
-  const start = polarToCartesian(cx, cy, r, endDeg);
-  const end = polarToCartesian(cx, cy, r, startDeg);
-  const largeArc = endDeg - startDeg > 180 ? 1 : 0;
-  return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArc} 0 ${end.x} ${end.y}`;
+function arc(cx: number, cy: number, r: number, from: number, to: number, clockwise = true) {
+  const s = point(cx, cy, r, from);
+  const e = point(cx, cy, r, to);
+  const diff = clockwise ? from - to : to - from;
+  const large = diff > 180 ? 1 : 0;
+  const sweep = clockwise ? 0 : 1;
+  return `M ${s.x} ${s.y} A ${r} ${r} 0 ${large} ${sweep} ${e.x} ${e.y}`;
 }
-
-// ---------------------------------------------------------------------------
-// Composant
-// ---------------------------------------------------------------------------
 
 export default function MonteCarloGauge({
   probabilityOfDelay,
@@ -62,92 +48,77 @@ export default function MonteCarloGauge({
   p85Days,
   size = 140,
 }: MonteCarloGaugeProps) {
-  const onTime = Math.max(0, Math.min(1, 1 - probabilityOfDelay));
-  const pct = Math.round(onTime * 100);
+  const onTime  = Math.max(0, Math.min(1, 1 - probabilityOfDelay));
+  const pct     = Math.round(onTime * 100);
 
   const cx = size / 2;
-  const cy = size / 2;
-  const r = (size - STROKE_WIDTH * 2) / 2;
+  const cy = size / 2 + size * 0.05;      // légèrement bas pour centrer visuellement
+  const r  = (size - STROKE * 2) / 2 - 2;
 
-  // L'arc commence à GAP/2 depuis le bas gauche et finit à GAP/2 avant le bas droit
-  const startDeg = 90 + GAP_DEGREES / 2;
-  const endDeg = 90 - GAP_DEGREES / 2 + 360;
-  const arcSpan = 360 - GAP_DEGREES;
+  // Arc de fond complet
+  const bgArc   = arc(cx, cy, r, START_DEG, END_DEG, false);
+  // Arc de remplissage proportionnel
+  const fillEnd = START_DEG - SWEEP * onTime;
+  const fillArc = onTime > 0.01 ? arc(cx, cy, r, START_DEG, fillEnd, false) : null;
 
-  // Position de remplissage selon le pourcentage
-  const fillEnd = startDeg + (arcSpan * onTime);
-
-  // Couleur selon le niveau de confiance
-  const color =
-    pct >= 70 ? '#22c55e' :   // vert
-    pct >= 40 ? '#f59e0b' :   // orange
-    '#ef4444';                 // rouge
-
-  const bgPath = arcPath(cx, cy, r, startDeg, endDeg);
-  const fillPath = onTime > 0.005 ? arcPath(cx, cy, r, startDeg, fillEnd) : '';
+  const color = pct >= 70 ? '#22c55e' : pct >= 40 ? '#f59e0b' : '#ef4444';
+  const viewH = size * 0.82; // hauteur du viewBox coupée en bas
 
   return (
-    <div className="flex flex-col items-center gap-1">
-      {/* Titre */}
-      <p className="text-xs font-medium text-base-content/70 text-center">
+    <div className="flex flex-col items-center gap-2">
+      <p className="text-xs font-semibold text-base-content/70 tracking-wide uppercase">
         On-time delivery
       </p>
 
-      {/* Jauge SVG */}
-      <div className="relative" style={{ width: size, height: size * 0.75 }}>
-        <svg
-          width={size}
-          height={size}
-          viewBox={`0 0 ${size} ${size}`}
-          style={{ overflow: 'visible', marginTop: -(size * 0.25) }}
-        >
-          {/* Arc de fond (gris) */}
+      <svg
+        width={size}
+        height={viewH}
+        viewBox={`0 0 ${size} ${viewH}`}
+        style={{ display: 'block' }}
+      >
+        {/* Arc fond */}
+        <path
+          d={bgArc}
+          fill="none"
+          stroke="#e5e7eb"
+          strokeWidth={STROKE}
+          strokeLinecap="round"
+        />
+
+        {/* Arc rempli */}
+        {fillArc && (
           <path
-            d={bgPath}
+            d={fillArc}
             fill="none"
-            stroke="currentColor"
-            strokeWidth={STROKE_WIDTH}
+            stroke={color}
+            strokeWidth={STROKE}
             strokeLinecap="round"
-            className="text-base-300"
           />
+        )}
 
-          {/* Arc de remplissage (coloré) */}
-          {fillPath && (
-            <path
-              d={fillPath}
-              fill="none"
-              stroke={color}
-              strokeWidth={STROKE_WIDTH}
-              strokeLinecap="round"
-            />
-          )}
+        {/* Pourcentage central */}
+        <text
+          x={cx}
+          y={cy + 6}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fontSize={size * 0.23}
+          fontWeight="800"
+          fill={color}
+        >
+          {pct}%
+        </text>
+      </svg>
 
-          {/* Pourcentage central */}
-          <text
-            x={cx}
-            y={cy + 8}
-            textAnchor="middle"
-            fontSize={size * 0.22}
-            fontWeight="700"
-            fill={color}
-            fontFamily="inherit"
-          >
-            {pct}%
-          </text>
-        </svg>
-      </div>
-
-      {/* Légende Monte-Carlo */}
-      <div className="flex flex-col items-center gap-0.5 text-center">
-        <p className="text-xs text-base-content/50">
-          Median: <span className="font-medium text-base-content/70">{medianDays}d</span>
-          {' · '}
-          P85: <span className="font-medium text-base-content/70">{p85Days}d</span>
-        </p>
-        <p className="text-xs text-base-content/40 italic">
-          Monte-Carlo · 10 000 simulations
-        </p>
-      </div>
+      {/* Légende */}
+      <p className="text-xs text-base-content/50 -mt-1">
+        Median: <span className="font-semibold text-base-content/70">{medianDays}d</span>
+        {' · '}
+        P85: <span className="font-semibold text-base-content/70">{p85Days}d</span>
+      </p>
+      <p className="text-xs text-base-content/35 italic">
+        Monte-Carlo · 10 000 simulations
+      </p>
     </div>
   );
 }

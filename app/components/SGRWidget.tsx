@@ -155,17 +155,13 @@ export default function SGRWidget({ projectId, refreshKey }: SGRWidgetProps) {
             {result.niveau.toUpperCase()}
           </span>
         </div>
-        {result.notificationDecision && (
+        {result.notificationDecision && result.notificationDecision.type !== 'SILENT' && (
           <div className="ml-auto flex flex-col items-end gap-1">
-            <span className={`badge badge-sm ${result.notificationDecision.type === 'SILENT' ? 'badge-success' : result.notificationDecision.type === 'INSIGHT' ? 'badge-warning' : 'badge-error'}`}>
-              {result.notificationDecision.type === 'SILENT' ? 'Monitoring'
-                : result.notificationDecision.type === 'INSIGHT' ? '⚡ Insight'
-                : '🚨 Alert'}
+            <span className={`badge badge-sm ${result.notificationDecision.type === 'INSIGHT' ? 'badge-warning' : 'badge-error'}`}>
+              {result.notificationDecision.type === 'INSIGHT' ? '⚡ Insight' : '🚨 Alert'}
             </span>
             <span className="text-xs text-base-content/40 text-right max-w-32 leading-tight">
-              {result.notificationDecision.type === 'SILENT' ? 'No action needed'
-                : result.notificationDecision.type === 'INSIGHT' ? 'Proactive action suggested'
-                : 'Immediate action required'}
+              {result.notificationDecision.type === 'INSIGHT' ? 'Proactive action suggested' : 'Immediate action required'}
             </span>
           </div>
         )}
