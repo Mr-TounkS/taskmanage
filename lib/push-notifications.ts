@@ -1,20 +1,46 @@
 /**
  * lib/push-notifications.ts
- * Envoi de notifications push via Firebase Cloud Messaging (Admin SDK).
+ * Envoi de notifications push via Web Push VAPID natif (package web-push).
  *
- * Migration web-push VAPID → firebase-admin FCM :
- * Le token FCM (stocké dans PushSubscription.endpoint) est utilisé
- * comme identifiant de destination pour chaque message.
+ * Le protocole Web Push standard utilise :
+ *   - endpoint  : URL unique du push service du navigateur
+ *   - p256dh    : clé publique de chiffrement du client
+ *   - auth      : secret d'authentification du client
  *
  * Variables d'environnement requises (serveur uniquement) :
- *   FIREBASE_PROJECT_ID
- *   FIREBASE_CLIENT_EMAIL
- *   FIREBASE_PRIVATE_KEY
+ *   VAPID_PUBLIC_KEY   (généré via : npx web-push generate-vapid-keys)
+ *   VAPID_PRIVATE_KEY
+ *   VAPID_MAILTO       (ex: mailto:admin@example.com)
  *
  * Architecture : infrastructure — ne pas importer dans domain/ ni application/
+ * Section mémoire : 3.4 — Module actif de gestion des risques (notifications)
  */
 
-import { fcmAdmin } from "@/lib/firebase-admin";
+import webpush from "web-push";
+
+let vapidInitialized = false;
+
+/**
+ * Initialise les clés VAPID de manière paresseuse (lazy).
+ * Appelé juste avant chaque envoi — évite l'erreur au build
+ * quand les variables d'environnement ne sont pas encore disponibles.
+ */
+function ensureVapidInitialized(): void {
+  if (vapidInitialized) return;
+
+  const publicKey  = process.env.VAPID_PUBLIC_KEY;
+  const privateKey = process.env.VAPID_PRIVATE_KEY;
+  const mailto     = process.env.VAPID_MAILTO ?? "mailto:admin@taskmanage.app";
+
+  if (!publicKey || !privateKey) {
+    throw new Error(
+      "[WebPush] VAPID keys missing. Set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY in environment variables."
+    );
+  }
+
+  webpush.setVapidDetails(mailto, publicKey, privateKey);
+  vapidInitialized = true;
+}
 
 export interface PushPayload {
   title: string;
@@ -24,66 +50,59 @@ export interface PushPayload {
 }
 
 export interface PushSubscriptionData {
-  endpoint: string; // Contient le token FCM
-  p256dh: string;   // Inutilisé avec FCM (conservé pour compatibilité schéma)
-  auth: string;     // Inutilisé avec FCM (conservé pour compatibilité schéma)
+  endpoint: string;
+  p256dh: string;
+  auth: string;
 }
 
 /**
- * Envoie une notification push FCM à un token unique.
- * Retourne false si le token est expiré/invalide — le caller doit le supprimer.
+ * Sends a Web Push notification to a single subscription.
+ * Returns false if the subscription is expired/invalid — caller should delete it.
  */
 export async function sendPushNotification(
   subscription: PushSubscriptionData,
   payload: PushPayload
 ): Promise<boolean> {
   try {
-    await fcmAdmin.send({
-      token: subscription.endpoint,
-      notification: {
+    ensureVapidInitialized();
+    await webpush.sendNotification(
+      {
+        endpoint: subscription.endpoint,
+        keys: { p256dh: subscription.p256dh, auth: subscription.auth },
+      },
+      JSON.stringify({
         title: payload.title,
         body:  payload.body,
-      },
-      webpush: {
-        notification: {
-          icon:  payload.icon ?? "/android/launchericon-192x192.png",
-          badge: "/android/launchericon-96x96.png",
-        },
-        fcmOptions: {
-          link: payload.url ?? "/",
-        },
-      },
-    });
+        icon:  payload.icon ?? "/android/launchericon-192x192.png",
+        url:   payload.url  ?? "/",
+      }),
+    );
     return true;
   } catch (error: unknown) {
-    const code = (error as { code?: string })?.code;
-    if (
-      code === "messaging/registration-token-not-registered" ||
-      code === "messaging/invalid-registration-token"
-    ) {
-      return false;
-    }
-    console.error("[FCM] Erreur envoi notification :", error);
+    const status = (error as { statusCode?: number })?.statusCode;
+    // 404 = endpoint gone, 410 = subscription expired
+    if (status === 404 || status === 410) return false;
+    console.error("[WebPush] Error sending notification:", error);
     return false;
   }
 }
 
 /**
- * Envoie une notification push FCM à tous les tokens d'un utilisateur.
- * Retourne la liste des tokens expirés à supprimer.
+ * Sends a Web Push notification to all subscriptions of a project.
+ * Returns the list of expired endpoints to delete.
  */
 export async function sendPushToSubscriptions(
   subscriptions: PushSubscriptionData[],
   payload: PushPayload
 ): Promise<string[]> {
-  const expiredTokens: string[] = [];
+  const expiredEndpoints: string[] = [];
 
   await Promise.all(
     subscriptions.map(async (sub) => {
       const success = await sendPushNotification(sub, payload);
-      if (!success) expiredTokens.push(sub.endpoint);
+      if (!success) expiredEndpoints.push(sub.endpoint);
     })
   );
 
-  return expiredTokens;
+  return expiredEndpoints;
 }

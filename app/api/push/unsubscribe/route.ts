@@ -1,8 +1,8 @@
 /**
  * DELETE /api/push/unsubscribe
- * Supprime le token FCM Firebase d'un utilisateur.
+ * Supprime l'abonnement Web Push VAPID d'un utilisateur.
  *
- * Corps attendu : { token: string }
+ * Corps attendu : { endpoint: string }
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -10,19 +10,18 @@ import prisma from "@/lib/prisma";
 
 export async function DELETE(req: NextRequest) {
   try {
-    const body = await req.json() as { token?: string };
-    const { token } = body;
+    const body = await req.json() as { endpoint?: string };
+    const { endpoint } = body;
 
-    if (!token) {
-      return NextResponse.json({ error: "token requis" }, { status: 400 });
+    if (!endpoint) {
+      return NextResponse.json({ error: "endpoint required" }, { status: 400 });
     }
 
-    // Le token FCM est stocké dans le champ endpoint
-    await prisma.pushSubscription.deleteMany({ where: { endpoint: token } });
+    await prisma.pushSubscription.deleteMany({ where: { endpoint } });
 
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (error) {
-    console.error("[FCM Unsubscribe] Erreur :", error);
-    return NextResponse.json({ error: "Erreur interne" }, { status: 500 });
+    console.error("[WebPush Unsubscribe] Error:", error);
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }

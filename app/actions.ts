@@ -20,6 +20,7 @@ import { GetProjectsAssociatedWithUserUseCase } from "@/application/use-cases/pr
 import { GetProjectInfoUseCase } from "@/application/use-cases/project/GetProjectInfoUseCase";
 import { GetProjectUsersUseCase } from "@/application/use-cases/project/GetProjectUsersUseCase";
 import { GetTeamsOverviewUseCase } from "@/application/use-cases/project/GetTeamsOverviewUseCase";
+import { GetAnalyticsDataUseCase } from "@/application/use-cases/analytics/GetAnalyticsDataUseCase";
 
 // Use Cases - WIP
 import { UpsertWIPConfigUseCase } from "@/application/use-cases/wip/UpsertWIPConfigUseCase";
@@ -29,8 +30,18 @@ import { CalculateSGRUseCase } from "@/application/use-cases/sgr/CalculateSGRUse
 import { SGRTechDebt } from "@/lib/risk-algorithm/types";
 import { fetchCodacyMetrics } from "@/lib/codacy-api";
 
+// Agent prescriptif LLM
+import { RiskPrescriptiveAgent, buildPayload, SEUIL_PRESCRIPTION } from "@/lib/risk-agent/RiskPrescriptiveAgent";
+import { LLMRiskAnalysisResponse } from "@/lib/risk-agent/types";
+
+// Service de routage des notifications (Clean Architecture — Domain Service)
+import { NotificationDecisionService } from "@/domain/services/NotificationDecisionService";
+
 // Push notifications
 import { sendPushToSubscriptions } from "@/lib/push-notifications";
+import { PrismaSubscriptionRepository } from "@/infrastructure/repositories/PrismaSubscriptionRepository";
+import { RegisterPushSubscriptionUseCase } from "@/application/use-cases/push/RegisterPushSubscriptionUseCase";
+import { SendPushNotificationUseCase, WebPushService } from "@/application/use-cases/push/SendPushNotificationUseCase";
 
 // Use Cases - Task
 import { CreateTaskUseCase } from "@/application/use-cases/task/CreateTaskUseCase";
@@ -44,7 +55,8 @@ function makeRepos() {
     const taskRepo = new PrismaTaskRepository(prisma);
     const columnWIPConfigRepo = new PrismaColumnWIPConfigRepository(prisma);
     const sgrHistoryRepo = new PrismaSGRHistoryRepository(prisma);
-    return { userRepo, projectRepo, taskRepo, columnWIPConfigRepo, sgrHistoryRepo };
+    const subscriptionRepo = new PrismaSubscriptionRepository(prisma);
+    return { userRepo, projectRepo, taskRepo, columnWIPConfigRepo, sgrHistoryRepo, subscriptionRepo };
 }
 
 export async function checkAndAddUser(email: string, name: string, imageUrl?: string) {
@@ -80,6 +92,16 @@ export async function deleteProjectById(projectId: string) {
         console.error('[deleteProjectById Error]', error);
         throw error;
     }
+}
+
+/** Met à jour le nom d'un projet (renommage inline depuis la page projet) */
+export async function updateProjectName(projectId: string, newName: string): Promise<void> {
+    const trimmed = newName.trim();
+    if (!trimmed) throw new Error("Project name cannot be empty");
+    await prisma.project.update({
+        where: { id: projectId },
+        data: { name: trimmed },
+    });
 }
 
 export async function addUserToProject(email: string, inviteCode: string) {
@@ -118,6 +140,16 @@ export async function getProjectUser(idProject: string) {
         return await new GetProjectUsersUseCase(projectRepo).execute(idProject);
     } catch (error) {
         console.error('[getProjectUser Error]', error);
+        throw error;
+    }
+}
+
+export async function getAnalyticsData(email: string) {
+    const { projectRepo, sgrHistoryRepo } = makeRepos();
+    try {
+        return await new GetAnalyticsDataUseCase(projectRepo, sgrHistoryRepo).execute(email);
+    } catch (error) {
+        console.error('[getAnalyticsData Error]', error);
         throw error;
     }
 }
@@ -201,12 +233,19 @@ export async function getProjectSGR(
             techDebt: resolvedTechDebt,
         });
 
-        // Déclenche une notification push si le SGR dépasse le seuil d'alerte
-        if (result.sgr >= 60) {
+        // Routage des notifications via NotificationDecisionService (domain service)
+        const decision = NotificationDecisionService.decide({
+            sgrScore: result.sgr,
+            niveau: result.niveau,
+            alertes: result.alertes,
+            monteCarloDelayProbability: result.indicateurs.monteCarlo?.probabilityOfDelay ?? null,
+        });
+        if (decision.shouldPush) {
             await notifyProjectMembersPush(projectId, result.sgr, result.niveau);
         }
 
-        return result;
+        // Enrichit le résultat SGR avec la décision de notification pour l'UI
+        return { ...result, notificationDecision: decision };
     } catch (error) {
         console.error('[SGR Error]', error);
         throw new Error(`Erreur lors du calcul du SGR: ${error instanceof Error ? error.message : String(error)}`);
@@ -215,7 +254,7 @@ export async function getProjectSGR(
 
 /**
  * Envoie une notification push à tous les membres abonnés d'un projet.
- * Supprime automatiquement les abonnements expirés (code 410).
+ * Délègue à SendPushNotificationUseCase (Clean Architecture).
  */
 async function notifyProjectMembersPush(
     projectId: string,
@@ -223,36 +262,19 @@ async function notifyProjectMembersPush(
     niveau: string
 ): Promise<void> {
     try {
-        // Récupère tous les abonnements push des membres du projet
-        const subscriptions = await prisma.pushSubscription.findMany({
-            where: {
-                user: {
-                    OR: [
-                        { userProjects: { some: { projectId } } },
-                        { createdProjects: { some: { id: projectId } } },
-                    ],
-                },
-            },
-        });
+        const { subscriptionRepo } = makeRepos();
 
-        if (subscriptions.length === 0) return;
-
-        const isCritical = sgr >= 80;
-        const payload = {
-            title: isCritical ? "Risque critique détecté" : "Risque modéré détecté",
-            body: `SGR : ${Math.round(sgr)}/100 — Niveau ${niveau}. Vérifiez votre tableau Kanban.`,
-            url: `/project/${projectId}`,
-            icon: "/android-192x192.png",
+        // Adaptateur WebPushService → lib/push-notifications (FCM Admin SDK)
+        const webPushService: WebPushService = {
+            send: async (subscriptions, payload) =>
+                sendPushToSubscriptions(subscriptions, payload),
         };
 
-        const expiredEndpoints = await sendPushToSubscriptions(subscriptions, payload);
-
-        // Nettoie les abonnements expirés
-        if (expiredEndpoints.length > 0) {
-            await prisma.pushSubscription.deleteMany({
-                where: { endpoint: { in: expiredEndpoints } },
-            });
-        }
+        await new SendPushNotificationUseCase(subscriptionRepo, webPushService).execute({
+            projectId,
+            sgr,
+            niveau: niveau as 'low' | 'moderate' | 'high' | 'critical',
+        });
     } catch (error) {
         // Ne bloque jamais le calcul SGR si le push échoue
         console.error("[Push SGR] Erreur notification :", error);
@@ -309,6 +331,71 @@ export async function upsertWIPConfigs(
 }
 
 /**
+ * Calcule les données du Burndown Chart basé sur les dates réelles des tâches.
+ * Sprint start = première tâche démarrée (observable en base).
+ * Projection = Monte-Carlo depuis les données historiques réelles.
+ */
+export async function getBurndownData(projectId: string) {
+    const { taskRepo } = makeRepos();
+    try {
+        const toDate = (v: unknown): Date | null => {
+            if (v == null) return null;
+            if (v instanceof Date) return v;
+            const d = new Date(v as string);
+            return isNaN(d.getTime()) ? null : d;
+        };
+
+        const taches = await taskRepo.findByProject(projectId);
+        const tasks = taches.map(t => ({
+            status: t.status,
+            completedAt: toDate(t.completedAt),
+            startedAt: toDate(t.startedAt),
+        }));
+
+        // Débit historique depuis les dates réelles de complétion
+        const msParJour = 1000 * 60 * 60 * 24;
+        const maintenant = new Date();
+        const debut30j = new Date(maintenant.getTime() - 30 * msParJour);
+        const throughputMap = new Map<string, number>();
+        for (let d = 0; d < 30; d++) {
+            const jour = new Date(debut30j.getTime() + d * msParJour);
+            throughputMap.set(jour.toISOString().slice(0, 10), 0);
+        }
+        for (const t of tasks.filter(x => x.completedAt !== null)) {
+            const cle = t.completedAt!.toISOString().slice(0, 10);
+            if (throughputMap.has(cle)) throughputMap.set(cle, (throughputMap.get(cle) ?? 0) + 1);
+        }
+        const throughputHistory = Array.from(throughputMap.values()).filter(v => v > 0);
+
+        const remainingWorkItems = tasks.filter(t => t.status !== 'Done').length;
+
+        // Monte-Carlo uniquement si historique suffisant
+        let medianDays = Math.max(remainingWorkItems, 3);
+        let p85Days = Math.max(remainingWorkItems * 2, 7);
+
+        if (throughputHistory.length >= 3 && remainingWorkItems > 0) {
+            const { MonteCarloSimulator } = await import('@/lib/risk-algorithm/MonteCarloSimulator');
+            const mc = MonteCarloSimulator.simulate({
+                throughputHistory,
+                remainingWorkItems,
+                remainingDays: 30,
+                iterations: 5_000,
+            });
+            medianDays = mc.medianDaysToComplete;
+            p85Days = mc.p85DaysToComplete;
+        }
+
+        const { computeBurndown } = await import('@/lib/risk-algorithm/burndown');
+        const result = computeBurndown({ tasks, medianDaysToComplete: medianDays, p85DaysToComplete: p85Days });
+
+        return result;
+    } catch (error) {
+        console.error('[Burndown Error]', error);
+        return { type: 'no_work_started' as const };
+    }
+}
+
+/**
  * Récupère l'historique des scores SGR d'un projet, du plus ancien au plus récent.
  * Retourne des données sérialisables (createdAt converti en string ISO).
  */
@@ -345,6 +432,41 @@ export const updateTaskStatus = async (
     } catch (error) {
         console.error('[UpdateStatus Error]', error);
         throw error;
+    }
+};
+
+/**
+ * Retourne tous les fichiers d'un projet, groupés par tâche.
+ */
+export const getProjectFiles = async (projectId: string) => {
+    try {
+        const tasks = await prisma.task.findMany({
+            where: { projectId, files: { some: {} } },
+            select: {
+                id: true,
+                name: true,
+                status: true,
+                user: {
+                    select: { name: true, email: true, imageUrl: true },
+                },
+                files: {
+                    select: {
+                        id: true,
+                        fileName: true,
+                        fileSize: true,
+                        mimeType: true,
+                        blobUrl: true,
+                        uploadedAt: true,
+                    },
+                    orderBy: { uploadedAt: 'asc' },
+                },
+            },
+            orderBy: { id: 'desc' },
+        });
+        return tasks;
+    } catch (error) {
+        console.error('[GetProjectFiles Error]', error);
+        return [];
     }
 };
 
@@ -410,6 +532,102 @@ export const uploadTaskFile = async (taskId: string, formData: FormData) => {
         throw error;
     }
 };
+
+// ---------------------------------------------------------------------------
+// Intégration GitHub — configuration webhook par projet
+// ---------------------------------------------------------------------------
+
+import { PrismaExternalIntegrationRepository } from "@/infrastructure/repositories/PrismaExternalIntegrationRepository";
+
+/** Enregistre ou met à jour la configuration GitHub d'un projet */
+export async function saveGitHubIntegration(
+    projectId: string,
+    repoFullName: string,
+    webhookSecret: string,
+) {
+    if (!repoFullName.match(/^[\w.-]+\/[\w.-]+$/)) {
+        throw new Error("Format invalide — utiliser owner/repo (ex: vercel/next.js)");
+    }
+    const repo = new PrismaExternalIntegrationRepository(prisma);
+    return repo.upsert({ projectId, type: 'github', externalProjectRef: repoFullName, webhookSecret });
+}
+
+/** Récupère la configuration GitHub existante d'un projet (null si absente) */
+export async function getGitHubIntegration(projectId: string) {
+    const repo = new PrismaExternalIntegrationRepository(prisma);
+    return repo.findByProjectAndType(projectId, 'github');
+}
+
+export type PrescriptionError =
+  | { type: 'NO_API_KEY' }
+  | { type: 'BELOW_THRESHOLD'; sgr: number; threshold: number }
+  | { type: 'ERROR'; message: string };
+
+/**
+ * Génère une analyse prescriptive LLM pour un projet.
+ *
+ * Retourne le résultat JSON ou un objet d'erreur typé pour un meilleur diagnostic côté UI.
+ * Ne bloque jamais l'interface — toutes les erreurs sont capturées.
+ */
+export async function generateRiskPrescription(
+    projectId: string,
+    currentSgr?: number
+): Promise<LLMRiskAnalysisResponse | PrescriptionError> {
+    if (!process.env.ANTHROPIC_API_KEY) {
+        return { type: 'NO_API_KEY' };
+    }
+
+    try {
+        // Calcul SGR en lecture seule — PAS de sgrHistoryRepo (zéro écriture DB)
+        const { taskRepo, columnWIPConfigRepo, sgrHistoryRepo } = makeRepos();
+
+        const codacyToken = process.env.CODACY_API_TOKEN;
+        const resolvedTechDebt = codacyToken
+            ? await fetchCodacyMetrics(
+                process.env.CODACY_ORG ?? 'Mr-TounkS',
+                process.env.CODACY_REPO ?? 'taskmanage',
+                codacyToken
+              )
+            : undefined;
+
+        // SGR + historique en parallèle
+        const [sgrResult, rawHistory] = await Promise.all([
+            new CalculateSGRUseCase(taskRepo, columnWIPConfigRepo /* pas de historyRepo */).execute({
+                projectId,
+                techDebt: resolvedTechDebt ?? undefined,
+            }),
+            sgrHistoryRepo.findByProject(projectId),
+        ]);
+
+        const sgrEffectif = sgrResult.sgr;
+        if (sgrEffectif < SEUIL_PRESCRIPTION) {
+            return { type: 'BELOW_THRESHOLD', sgr: sgrEffectif, threshold: SEUIL_PRESCRIPTION };
+        }
+
+        const taches = await taskRepo.findByProject(projectId);
+        const activeWIP = taches.filter((t) => t.status === 'In Progress').length;
+
+        // Historique converti pour le calcul de tendance
+        const history = rawHistory.map(h => ({
+            sgr: h.sgr,
+            calculatedAt: new Date(h.createdAt),
+        }));
+
+        const payload = buildPayload(sgrResult, activeWIP, history);
+        const agent = new RiskPrescriptiveAgent();
+        return await agent.analyze(payload);
+    } catch (error) {
+        console.error('[RiskAgent] Erreur analyse prescriptive :', error);
+        return { type: 'ERROR', message: error instanceof Error ? error.message : String(error) };
+    }
+}
+
+/** Supprime l'intégration GitHub d'un projet */
+export async function deleteGitHubIntegration(projectId: string) {
+    const repo = new PrismaExternalIntegrationRepository(prisma);
+    const integration = await repo.findByProjectAndType(projectId, 'github');
+    if (integration) await repo.delete(integration.id);
+}
 
 // Suppression de fichier
 export const deleteTaskFile = async (fileId: string) => {

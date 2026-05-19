@@ -22,8 +22,21 @@ export default function PushNotificationToggle({ userEmail }: PushNotificationTo
   const { isSupported, permission, isSubscribed, isLoading, subscribe, unsubscribe } =
     usePushNotifications();
 
-  // Notifications non supportées par ce navigateur
-  if (!isSupported) return null;
+  // Notifications non supportées : affiche un bouton désactivé avec explication.
+  // iOS < 16.4 : Notification API absente. Chrome sur iOS : WebKit bloque le push.
+  // Android WebView (app in-app) : Service Worker non disponible.
+  if (!isSupported) {
+    return (
+      <div
+        className="tooltip tooltip-left"
+        data-tip="Notifications non supportées sur ce navigateur. Sur iOS : utilisez Safari 16.4+ en PWA installée."
+      >
+        <button className="btn btn-ghost btn-sm btn-circle opacity-30" disabled aria-label="Notifications non supportées">
+          <BellOff size={18} />
+        </button>
+      </div>
+    );
+  }
 
   // Permission définitivement refusée — on ne peut plus rien faire
   if (permission === "denied") {

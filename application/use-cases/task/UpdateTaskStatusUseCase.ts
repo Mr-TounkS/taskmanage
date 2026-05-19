@@ -7,6 +7,10 @@ export class UpdateTaskStatusUseCase {
     const task = await this.taskRepository.findById(taskId);
     if (!task) throw new Error('Tache non trouve');
 
+    if (task.status === 'Done') {
+      throw new Error('A completed task cannot be moved back.');
+    }
+
     await this.taskRepository.updateStatus(taskId, newStatus, solutionDescription);
   }
 }

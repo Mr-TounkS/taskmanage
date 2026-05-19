@@ -1,5 +1,5 @@
 "use client"
-import { deleteTaskById, getProjectInfo } from "@/app/actions";
+import { deleteTaskById, getProjectInfo, updateProjectName } from "@/app/actions";
 import { saveToCache, readFromCache, cacheKeyProject } from "@/lib/local-data-cache";
 import EmptyState from "@/app/components/EmptyState";
 import ProjectComponent from "@/app/components/ProjectComponent";
@@ -24,10 +24,14 @@ const WIPConfigWidget = dynamic(() => import("@/app/components/WIPConfigWidget")
     loading: () => <div className="skeleton h-24 w-full rounded-xl" />,
     ssr: false,
 });
+const FilesTab = dynamic(() => import("@/app/components/FilesTab"), {
+    loading: () => <div className="skeleton h-64 w-full rounded-xl" />,
+    ssr: false,
+});
 import Wrapper from "@/app/components/Wrapper";
 import { Project } from "@/app/type";
 import { useUser } from "@clerk/nextjs";
-import { Calendar, ChevronDown, CircleCheckBig, CopyPlus, Files, Kanban, List, ListTodo, Loader, Pencil, Share2, SlidersHorizontal, UserCheck, Zap } from "lucide-react";
+import { Calendar, Check, CircleCheckBig, CopyPlus, Files, Kanban, List, ListTodo, Loader, Pencil, Settings, SlidersHorizontal, UserCheck, X } from "lucide-react";
 import Link from "next/link";
 import React, { useEffect, useState } from "react";
 import { toast } from "react-toastify";
@@ -42,9 +46,14 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
     const [assignedFilter, setAssignedFilter] = useState<boolean>(false);
     const [taskCounts, setTaskCounts] = useState({ todo: 0, inProgress: 0, done: 0, assigned: 0 })
     const [sgrRefreshKey, setSgrRefreshKey] = useState(0)
-    // Vue active : "kanban", "liste", "overview" ou "calendar"
-    const [vue, setVue] = useState<"liste" | "kanban" | "overview" | "calendar">("kanban")
+    // Vue active : "kanban", "liste", "overview", "calendar" ou "files"
+    const [vue, setVue] = useState<"liste" | "kanban" | "overview" | "calendar" | "files">("kanban")
     const [userRole, setUserRole] = useState<'PO' | 'MEMBER'>('MEMBER')
+
+    // État d'édition du nom de projet
+    const [isEditingName, setIsEditingName] = useState(false);
+    const [nameValue, setNameValue] = useState("");
+    const [isSavingName, setIsSavingName] = useState(false);
 
     const fetchInfos = async (projectId: string) => {
         // Mode hors ligne → lecture depuis le cache localStorage
@@ -83,8 +92,6 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
 
             // Sauvegarde en cache pour les sessions offline
             saveToCache(cacheKeyProject(projectId), project)
-            // Déclenche le recalcul du SGR à chaque rechargement du projet
-            setSgrRefreshKey(k => k + 1)
         } catch (error) {
             console.error("Error loading project:", error);
             // Fallback cache si la requête échoue
@@ -137,6 +144,38 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
         return statutsMatch && assignedMatch
     })
 
+    /** Ouvre l'éditeur de nom et pré-remplit avec le nom actuel */
+    const startEditingName = () => {
+        setNameValue(project?.name ?? "");
+        setIsEditingName(true);
+    };
+
+    /** Sauvegarde le nouveau nom via la Server Action */
+    const saveProjectName = async () => {
+        const trimmed = nameValue.trim();
+        if (!trimmed || trimmed === project?.name) {
+            setIsEditingName(false);
+            return;
+        }
+        setIsSavingName(true);
+        try {
+            await updateProjectName(projectId, trimmed);
+            setProject(prev => prev ? { ...prev, name: trimmed } : prev);
+            toast.success("Project renamed!");
+        } catch {
+            toast.error("Failed to rename project");
+        } finally {
+            setIsSavingName(false);
+            setIsEditingName(false);
+        }
+    };
+
+    /** Annule l'édition */
+    const cancelEditingName = () => {
+        setIsEditingName(false);
+        setNameValue("");
+    };
+
     const deleteTask = async (taskId: string) => {
         try {
             await deleteTaskById(taskId)
@@ -152,23 +191,69 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
             {/* En-tête du projet : nom + actions */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-1 gap-3">
                 <div className="flex items-center gap-2 min-w-0">
-                    <h1 className="text-xl sm:text-2xl font-bold truncate">
-                        {project?.name || <span className="skeleton w-40 h-7 inline-block rounded" />}
-                    </h1>
-                    <button className="btn btn-ghost btn-xs btn-circle opacity-40 hover:opacity-100 shrink-0" title="Rename (coming soon)" disabled>
-                        <Pencil className="w-3.5 h-3.5" />
-                    </button>
+                    {isEditingName ? (
+                        /* ── Mode édition : champ texte inline ── */
+                        <div className="flex items-center gap-1.5">
+                            <input
+                                autoFocus
+                                type="text"
+                                value={nameValue}
+                                onChange={e => { setNameValue(e.target.value); }}
+                                onKeyDown={e => {
+                                    if (e.key === "Enter") void saveProjectName();
+                                    if (e.key === "Escape") cancelEditingName();
+                                }}
+                                className="input input-bordered input-sm text-xl sm:text-2xl font-bold h-9 w-52 sm:w-72 px-2"
+                                maxLength={80}
+                                disabled={isSavingName}
+                            />
+                            <button
+                                onClick={saveProjectName}
+                                disabled={isSavingName || !nameValue.trim()}
+                                className="btn btn-success btn-xs btn-circle"
+                                title="Save"
+                            >
+                                {isSavingName
+                                    ? <span className="loading loading-spinner loading-xs" />
+                                    : <Check className="w-3.5 h-3.5" />
+                                }
+                            </button>
+                            <button
+                                onClick={cancelEditingName}
+                                disabled={isSavingName}
+                                className="btn btn-ghost btn-xs btn-circle"
+                                title="Cancel"
+                            >
+                                <X className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+                    ) : (
+                        /* ── Mode lecture : nom + bouton crayon ── */
+                        <>
+                            <h1 className="text-xl sm:text-2xl font-bold truncate">
+                                {project?.name || <span className="skeleton w-40 h-7 inline-block rounded" />}
+                            </h1>
+                            {project && (
+                                <button
+                                    onClick={startEditingName}
+                                    className="btn btn-ghost btn-xs btn-circle opacity-40 hover:opacity-100 shrink-0"
+                                    title="Rename project"
+                                >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                            )}
+                        </>
+                    )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                    {/* Partager + Automation masqués sur très petits écrans */}
-                    <button className="hidden sm:flex btn btn-outline btn-sm gap-1.5 opacity-50 cursor-not-allowed" disabled title="Coming soon">
-                        <Share2 className="w-3.5 h-3.5" />
-                        Share
-                    </button>
-                    <button className="hidden sm:flex btn btn-outline btn-sm gap-1.5 opacity-50 cursor-not-allowed" disabled title="Coming soon">
-                        <Zap className="w-3.5 h-3.5" />
+                    <Link
+                        href={`/project/${projectId}/settings`}
+                        className="hidden sm:flex btn btn-primary btn-sm gap-1.5"
+                        title="Project settings"
+                    >
+                        <Settings className="w-4 h-4" />
                         Automation
-                    </button>
+                    </Link>
                     <Link href={`/new-tasks/${projectId}`} className="btn btn-primary btn-sm gap-1.5">
                         <CopyPlus className="w-4 h-4" />
                         <span className="hidden xs:inline">New task</span>
@@ -185,10 +270,11 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                         { id: "liste", icon: <List className="w-4 h-4" />, label: "List" },
                         { id: "kanban", icon: <Kanban className="w-4 h-4" />, label: "Board" },
                         { id: "calendar", icon: <Calendar className="w-4 h-4" />, label: "Calendar" },
+                        { id: "files", icon: <Files className="w-4 h-4" />, label: "Files" },
                     ].map(({ id, icon, label }) => (
                         <button
                             key={id}
-                            onClick={() => setVue(id as "overview" | "liste" | "kanban" | "calendar")}
+                            onClick={() => setVue(id as "overview" | "liste" | "kanban" | "calendar" | "files")}
                             className={`flex items-center gap-2 px-3 sm:px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors shrink-0
                                 ${vue === id
                                     ? "border-primary text-primary"
@@ -198,13 +284,6 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                             {icon} {label}
                         </button>
                     ))}
-                    {/* Onglet Files — placeholder */}
-                    <button disabled
-                        className="flex items-center gap-2 px-3 sm:px-4 py-3 text-sm font-medium border-b-2 border-transparent text-base-content/25 cursor-not-allowed whitespace-nowrap shrink-0"
-                        title="Coming soon"
-                    >
-                        <Files className="w-4 h-4" /> Files
-                    </button>
                 </div>
             </div>
 
@@ -266,19 +345,6 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                             <UserCheck className="w-3.5 h-3.5" /> My tasks
                             <span className="badge badge-sm">{taskCounts.assigned}</span>
                         </button>
-
-                        {/* Advanced filters (visual placeholders) */}
-                        <div className="flex items-center gap-2 ml-auto">
-                            <button disabled className="btn btn-ghost btn-sm gap-1.5 border border-base-300 opacity-40 cursor-not-allowed" title="Coming soon">
-                                Assigned <ChevronDown className="w-3 h-3" />
-                            </button>
-                            <button disabled className="btn btn-ghost btn-sm gap-1.5 border border-base-300 opacity-40 cursor-not-allowed" title="Coming soon">
-                                Priority <ChevronDown className="w-3 h-3" />
-                            </button>
-                            <button disabled className="btn btn-ghost btn-sm gap-1.5 border border-base-300 opacity-40 cursor-not-allowed" title="Coming soon">
-                                <SlidersHorizontal className="w-3.5 h-3.5" /> Advanced filters
-                            </button>
-                        </div>
                     </div>
 
                     <div className="border border-base-300 shadow-sm rounded-xl">
@@ -325,6 +391,11 @@ const page = ({ params }: { params: Promise<{ projectId: string }> }) => {
                     tasks={project?.tasks || []}
                     email={email}
                 />
+            )}
+
+            {/* ── Onglet Files ── */}
+            {vue === "files" && projectId && (
+                <FilesTab projectId={projectId} userRole={userRole} />
             )}
 
             {/* ── Onglet Vue d'ensemble (SGR, WIP, info projet) ── */}
