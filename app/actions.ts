@@ -331,6 +331,74 @@ export async function upsertWIPConfigs(
 }
 
 /**
+ * Calcule les données du Burndown Chart prédictif pour un projet.
+ * Combine l'historique réel des tâches et les projections Monte-Carlo.
+ */
+export async function getBurndownData(projectId: string) {
+    const { taskRepo, columnWIPConfigRepo } = makeRepos();
+    try {
+        const toDate = (v: unknown): Date | null => {
+            if (v == null) return null;
+            if (v instanceof Date) return v;
+            const d = new Date(v as string);
+            return isNaN(d.getTime()) ? null : d;
+        };
+
+        const taches = await taskRepo.findByProject(projectId);
+        const tasks = taches.map(t => ({
+            status: t.status,
+            completedAt: toDate(t.completedAt),
+            startedAt: toDate(t.startedAt),
+        }));
+
+        // Calcul Monte-Carlo pour les projections
+        const terminees = tasks.filter(t => t.completedAt !== null);
+        const msParJour = 1000 * 60 * 60 * 24;
+        const maintenant = new Date();
+        const debut30j = new Date(maintenant.getTime() - 30 * msParJour);
+        const throughputMap = new Map<string, number>();
+        for (let d = 0; d < 30; d++) {
+            const jour = new Date(debut30j.getTime() + d * msParJour);
+            throughputMap.set(jour.toISOString().slice(0, 10), 0);
+        }
+        for (const t of terminees) {
+            const cle = t.completedAt!.toISOString().slice(0, 10);
+            if (throughputMap.has(cle)) throughputMap.set(cle, (throughputMap.get(cle) ?? 0) + 1);
+        }
+        const throughputHistory = Array.from(throughputMap.values()).filter(v => v > 0);
+
+        let medianDays = 14;
+        let p85Days = 21;
+        const remainingWorkItems = tasks.filter(t => t.status !== 'Done').length;
+
+        if (throughputHistory.length >= 3) {
+            const { MonteCarloSimulator } = await import('@/lib/risk-algorithm/MonteCarloSimulator');
+            const mc = MonteCarloSimulator.simulate({
+                throughputHistory,
+                remainingWorkItems,
+                remainingDays: 14,
+                iterations: 5_000,
+            });
+            medianDays = mc.medianDaysToComplete;
+            p85Days = mc.p85DaysToComplete;
+        }
+
+        const { computeBurndown } = await import('@/lib/risk-algorithm/burndown');
+        const points = computeBurndown({
+            tasks,
+            remainingDays: 14,
+            medianDaysToComplete: medianDays,
+            p85DaysToComplete: p85Days,
+        });
+
+        return points;
+    } catch (error) {
+        console.error('[Burndown Error]', error);
+        return [];
+    }
+}
+
+/**
  * Récupère l'historique des scores SGR d'un projet, du plus ancien au plus récent.
  * Retourne des données sérialisables (createdAt converti en string ISO).
  */

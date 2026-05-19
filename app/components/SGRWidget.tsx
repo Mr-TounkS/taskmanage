@@ -13,13 +13,19 @@
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { AlertTriangle, TrendingDown, Clock, Activity, Code2, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
-import { getProjectSGR, getSGRHistory } from "@/app/actions";
+import { getProjectSGR, getSGRHistory, getBurndownData } from "@/app/actions";
+import { BurndownPoint } from "@/lib/risk-algorithm/burndown";
 import { SGRResult } from "@/lib/risk-algorithm/types";
 import { NotificationDecision } from "@/domain/services/NotificationDecisionService";
 
 const MonteCarloDistributionChart = dynamic(() => import("./MonteCarloDistributionChart"), {
   ssr: false,
   loading: () => <div className="h-28 w-full bg-base-200 animate-pulse rounded-lg" />,
+});
+
+const BurndownChart = dynamic(() => import("./BurndownChart"), {
+  ssr: false,
+  loading: () => <div className="h-40 w-full bg-base-200 animate-pulse rounded-lg" />,
 });
 
 // PrescriptivePanel chargé en différé — appel serveur Anthropic API uniquement à la demande
@@ -120,10 +126,12 @@ type PointHistorique = Awaited<ReturnType<typeof getSGRHistory>>[number];
 export default function SGRWidget({ projectId, refreshKey }: SGRWidgetProps) {
   const [result, setResult] = useState<(SGRResult & { notificationDecision?: NotificationDecision }) | null>(null);
   const [historique, setHistorique] = useState<PointHistorique[]>([]);
+  const [burndown, setBurndown] = useState<BurndownPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
   // Progressive disclosure — sections repliables
   const [showMonteCarlo, setShowMonteCarlo] = useState(false);
+  const [showBurndown, setShowBurndown] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
 
   const chargerSGR = async () => {
@@ -131,12 +139,14 @@ export default function SGRWidget({ projectId, refreshKey }: SGRWidgetProps) {
     setErreur(null);
     try {
       // Calcul du SGR courant + récupération de l'historique en parallèle
-      const [data, hist] = await Promise.all([
+      const [data, hist, bd] = await Promise.all([
         getProjectSGR(projectId),
         getSGRHistory(projectId),
+        getBurndownData(projectId),
       ]);
       setResult(data);
       setHistorique(hist);
+      setBurndown(bd);
     } catch (error) {
       setErreur(error instanceof Error ? error.message : "Impossible de calculer le SGR.");
     } finally {
@@ -286,6 +296,24 @@ export default function SGRWidget({ projectId, refreshKey }: SGRWidgetProps) {
 
       {result.alertes.length === 0 && (
         <p className="text-xs text-success mb-3">No active alerts.</p>
+      )}
+
+      {/* Burndown Chart Prédictif — ouvert par défaut */}
+      {burndown.length > 0 && (
+        <div className="border-t border-base-300 mt-3 pt-3">
+          <button
+            onClick={() => setShowBurndown(!showBurndown)}
+            className="w-full flex items-center justify-between py-1 text-xs font-medium text-base-content/60 hover:text-base-content/80 transition-colors mb-2"
+          >
+            <span>📉 Predictive Burndown Chart</span>
+            {showBurndown ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          </button>
+          {showBurndown && (
+            <div className="bg-base-200/50 rounded-xl p-3">
+              <BurndownChart data={burndown} />
+            </div>
+          )}
+        </div>
       )}
 
       {/* Historique SGR — repliable */}
