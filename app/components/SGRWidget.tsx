@@ -12,7 +12,7 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { AlertTriangle, TrendingDown, Clock, Activity, Code2, RefreshCw } from "lucide-react";
+import { AlertTriangle, TrendingDown, Clock, Activity, Code2, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
 import { getProjectSGR, getSGRHistory } from "@/app/actions";
 import { SGRResult } from "@/lib/risk-algorithm/types";
 import { NotificationDecision } from "@/domain/services/NotificationDecisionService";
@@ -66,14 +66,48 @@ function couleurBarre(score: number): string {
   return "progress-error";
 }
 
-/** Libellé lisible pour chaque indicateur (5 seulement, sans github) */
-const LABELS_INDICATEURS: Record<string, { label: string; icon: React.ReactNode }> = {
-  wip: { label: "WIP Limit", icon: <AlertTriangle className="w-3 h-3" /> },
-  cycleTime: { label: "Cycle Time", icon: <Clock className="w-3 h-3" /> },
-  age: { label: "Task Age", icon: <Activity className="w-3 h-3" /> },
-  throughput: { label: "Throughput", icon: <TrendingDown className="w-3 h-3" /> },
-  tech: { label: "Tech Debt", icon: <Code2 className="w-3 h-3" /> },
-  monteCarlo: { label: "Monte-Carlo", icon: <Activity className="w-3 h-3 text-primary" /> },
+/** Libellé + tooltip explicatif pour chaque indicateur */
+const LABELS_INDICATEURS: Record<string, { label: string; icon: React.ReactNode; tooltip: (score: number) => string }> = {
+  wip: {
+    label: "WIP Limit",
+    icon: <AlertTriangle className="w-3 h-3" />,
+    tooltip: (s) => s >= 80
+      ? `WIP limit exceeded by ${s}% — too many tasks in progress simultaneously. Reduce to unblock flow.`
+      : s > 0 ? `WIP limit at ${s}% — approaching saturation.`
+      : "WIP within limit — no congestion detected.",
+  },
+  cycleTime: {
+    label: "Cycle Time",
+    icon: <Clock className="w-3 h-3" />,
+    tooltip: (s) => s >= 80
+      ? `Cycle time ${s}% above historical average — tasks are taking significantly longer to complete.`
+      : s > 0 ? `Cycle time slightly elevated (${s}%).`
+      : "Cycle time within normal range.",
+  },
+  age: {
+    label: "Task Age",
+    icon: <Activity className="w-3 h-3" />,
+    tooltip: (s) => s >= 80
+      ? `${s}% of in-progress tasks have exceeded the Service Level Expectation (SLE 85th percentile) — tasks are stagnating.`
+      : s > 0 ? `Some tasks are aging beyond SLE (${s}%).`
+      : "All tasks within expected age range.",
+  },
+  throughput: {
+    label: "Throughput",
+    icon: <TrendingDown className="w-3 h-3" />,
+    tooltip: (s) => s >= 80
+      ? `Throughput dropped ${s}% vs 90-day average — team delivery rate has significantly declined.`
+      : s > 0 ? `Throughput slightly below average (${s}%).`
+      : "Throughput stable — delivery rate is consistent.",
+  },
+  tech: {
+    label: "Tech Debt",
+    icon: <Code2 className="w-3 h-3" />,
+    tooltip: (s) => s >= 80
+      ? `Technical debt at critical level (${s}/100) — high bug count or code smells detected. Impacts future delivery capacity.`
+      : s > 0 ? `Moderate technical debt (${s}/100).`
+      : "Technical debt under control.",
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -88,6 +122,9 @@ export default function SGRWidget({ projectId, refreshKey }: SGRWidgetProps) {
   const [historique, setHistorique] = useState<PointHistorique[]>([]);
   const [loading, setLoading] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
+  // Progressive disclosure — sections repliables
+  const [showMonteCarlo, setShowMonteCarlo] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   const chargerSGR = async () => {
     setLoading(true);
@@ -178,13 +215,18 @@ export default function SGRWidget({ projectId, refreshKey }: SGRWidgetProps) {
         max={100}
       />
 
-      {/* Indicateurs détaillés */}
+      {/* Indicateurs détaillés avec tooltips */}
       <div className="space-y-2 mb-4">
         {(["wip", "cycleTime", "age", "throughput", "tech"] as const).map((cle) => {
           const indicateur = result.indicateurs[cle];
           const meta = LABELS_INDICATEURS[cle];
+          const score = Math.round(indicateur.score);
           return (
-            <div key={cle} className="flex items-center gap-2">
+            <div
+              key={cle}
+              className="flex items-center gap-2 tooltip tooltip-left"
+              data-tip={meta?.tooltip(score)}
+            >
               <span className="text-base-content/60">{meta?.icon}</span>
               <span className="text-xs text-base-content/70 w-20 shrink-0">
                 {meta?.label}
@@ -194,35 +236,47 @@ export default function SGRWidget({ projectId, refreshKey }: SGRWidgetProps) {
                 value={indicateur.score}
                 max={100}
               />
-              <span className="text-xs tabular-nums w-8 text-right">
-                {Math.round(indicateur.score)}
+              <span className={`text-xs tabular-nums w-8 text-right ${score >= 80 ? 'text-error font-bold' : ''}`}>
+                {score}
               </span>
             </div>
           );
         })}
-
       </div>
 
-      {/* Distribution Monte-Carlo — affichée uniquement si SprintContext disponible */}
+      {/* Section Monte-Carlo — repliable (Progressive Disclosure) */}
       {result.indicateurs.monteCarlo && result.indicateurs.monteCarlo.histogram.length > 0 && (
-        <div className="border border-primary/20 rounded-xl p-3 mb-4 bg-primary/5">
-          <MonteCarloDistributionChart
-            histogram={result.indicateurs.monteCarlo.histogram}
-            medianDays={result.indicateurs.monteCarlo.medianDaysToComplete}
-            remainingDays={result.indicateurs.monteCarlo.remainingDays}
-            probabilityOfDelay={result.indicateurs.monteCarlo.probabilityOfDelay}
-          />
+        <div className="mb-4">
+          <button
+            onClick={() => setShowMonteCarlo(!showMonteCarlo)}
+            className="w-full flex items-center justify-between px-3 py-2 rounded-xl border border-primary/20 bg-primary/5 text-xs font-medium text-primary/80 hover:bg-primary/10 transition-colors"
+          >
+            <span>🎲 Monte-Carlo Sprint Forecast</span>
+            <span className="flex items-center gap-1.5">
+              <span className="text-base-content/50 font-normal">
+                {Math.round((1 - result.indicateurs.monteCarlo.probabilityOfDelay) * 100)}% on-time
+              </span>
+              {showMonteCarlo ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            </span>
+          </button>
+          {showMonteCarlo && (
+            <div className="border border-primary/20 rounded-b-xl px-3 pb-3 bg-primary/5 -mt-1 pt-3">
+              <MonteCarloDistributionChart
+                histogram={result.indicateurs.monteCarlo.histogram}
+                medianDays={result.indicateurs.monteCarlo.medianDaysToComplete}
+                remainingDays={result.indicateurs.monteCarlo.remainingDays}
+                probabilityOfDelay={result.indicateurs.monteCarlo.probabilityOfDelay}
+              />
+            </div>
+          )}
         </div>
       )}
 
       {/* Alertes actives */}
       {result.alertes.length > 0 && (
-        <div className="space-y-1">
+        <div className="space-y-1 mb-3">
           {result.alertes.map((alerte, i) => (
-            <div
-              key={i}
-              className="flex items-start gap-1.5 text-xs text-warning"
-            >
+            <div key={i} className="flex items-start gap-1.5 text-xs text-warning">
               <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
               <span>{alerte}</span>
             </div>
@@ -230,14 +284,20 @@ export default function SGRWidget({ projectId, refreshKey }: SGRWidgetProps) {
         </div>
       )}
 
-      {/* No alerts */}
       {result.alertes.length === 0 && (
-        <p className="text-xs text-success">No active alerts.</p>
+        <p className="text-xs text-success mb-3">No active alerts.</p>
       )}
 
-      {/* Graphique d'évolution temporelle du SGR */}
-      <div className="border-t border-base-300 mt-4 pt-2">
-        <SGRHistoryChart historique={historique} />
+      {/* Historique SGR — repliable */}
+      <div className="border-t border-base-300 mt-2 pt-2">
+        <button
+          onClick={() => setShowHistory(!showHistory)}
+          className="w-full flex items-center justify-between py-1 text-xs text-base-content/50 hover:text-base-content/70 transition-colors"
+        >
+          <span>📈 Risk Evolution ({historique.length} measurements)</span>
+          {showHistory ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+        </button>
+        {showHistory && <SGRHistoryChart historique={historique} />}
       </div>
 
       {/* Agent prescriptif LLM — activé à la demande */}
