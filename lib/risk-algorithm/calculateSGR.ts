@@ -114,6 +114,12 @@ function calculerRAge(tasks: SGRTask[], maintenant: Date): SGRIndicator {
 }
 
 function calculerRThroughput(tasks: SGRTask[], maintenant: Date): SGRIndicator {
+  // Si aucune tâche active (tout est Done), le débit n'est pas un risque
+  const tachesActives = tasks.filter(t => t.status !== 'Done');
+  if (tachesActives.length === 0) {
+    return { score: 0, weight: POIDS_INTERNES.FLOW.THROUGHPUT, contribution: 0, details: {} };
+  }
+
   const msParJour = 1000 * 60 * 60 * 24;
   const debut90j = new Date(maintenant.getTime() - FENETRE_THROUGHPUT_DAYS * msParJour);
   const debut7j = new Date(maintenant.getTime() - 7 * msParJour);
